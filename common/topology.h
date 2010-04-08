@@ -122,6 +122,7 @@ public:
 
 public:
    int init(const char* topoconf);
+   int xdcs_init();
    int lookup(const char* ip, std::vector<int>& path);
 
    unsigned int match(std::vector<int>& p1, std::vector<int>& p2);

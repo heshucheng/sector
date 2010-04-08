@@ -58,7 +58,9 @@ public:
 
 public:
    int initServerCTX(const char* cert, const char* key);
+   int initServerCTX_ASN1(int clen, const unsigned char *cd, int klen, const unsigned char *kd);
    int initClientCTX(const char* cert);
+   int initClientCTX_ASN1(int len, const unsigned char *d);
 
    int open(const char* ip, const int& port);
    int listen();

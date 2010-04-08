@@ -51,7 +51,7 @@ written by
 using namespace std;
 
 
-int User::serialize(const vector<string>& input, string& buf) const
+int SUser::serialize(const vector<string>& input, string& buf) const
 {
    buf = "";
    for (vector<string>::const_iterator i = input.begin(); i != input.end(); ++ i)
@@ -78,18 +78,30 @@ int SServer::init(const int& port, const char* cert, const char* key)
 
    if (m_SSL.initServerCTX(cert, key) < 0)
    {
-      cerr << "cannot initialize security infomation with provided key/certificate.\n";
+      // cerr << "cannot initialize security infomation with provided key/certificate.\n";
       return -1;
    }
 
    if (m_SSL.open(NULL, m_iPort) < 0)
    {
-      cerr << "port is not available.\n";
+      // cerr << "port is not available.\n";
       return -1;
    }
 
    m_SSL.listen();
 
+   return 1;
+}
+
+int SServer::init_ASN1(const int& port, int clen, const unsigned char *cd, int klen, const unsigned char *kd)
+{
+   SSLTransport::init();
+   m_iPort = port;
+   if (m_SSL.initServerCTX_ASN1(clen, cd, klen, kd) < 0)
+     return -1;
+   if (m_SSL.open(NULL, m_iPort) < 0) 
+     return -1;
+   m_SSL.listen();
    return 1;
 }
 
@@ -129,9 +141,9 @@ bool SServer::match(const vector<IPRange>& acl, const char* ip)
    return false;
 }
 
-const User* SServer::match(const map<string, User>& users, const char* name, const char* password, const char* ip)
+const SUser* SServer::match(const map<string, SUser>& users, const char* name, const char* password, const char* ip)
 {
-   map<string, User>::const_iterator i = users.find(name);
+   map<string, SUser>::const_iterator i = users.find(name);
 
    if (i == users.end())
       return NULL;
@@ -228,7 +240,7 @@ void* SServer::process(void* p)
             goto EXIT;
 
          int32_t key;
-         const User* u = self->match(self->m_mUsers, user, password, ip);
+         const SUser* u = self->match(self->m_mUsers, user, password, ip);
          if (u != NULL)
             key = self->generateKey();
          else

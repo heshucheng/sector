@@ -107,6 +107,16 @@ int SSLTransport::initServerCTX(const char* cert, const char* key)
    return 1;
 }
 
+int SSLTransport::initServerCTX_ASN1(int clen, const unsigned char* cd, int klen, const unsigned char* kd)
+{
+   m_pCTX = SSL_CTX_new(TLSv1_server_method());
+   if (!(m_pCTX = SSL_CTX_new(TLSv1_server_method())) ||
+       !SSL_CTX_use_certificate_ASN1(m_pCTX, clen, cd) || 
+       !SSL_CTX_use_PrivateKey_ASN1(EVP_PKEY_RSA, m_pCTX, kd, klen))
+     return -1;
+   return 1;
+}
+
 int SSLTransport::initClientCTX(const char* cert)
 {
    m_pCTX = SSL_CTX_new(TLSv1_client_method());
@@ -120,6 +130,14 @@ int SSLTransport::initClientCTX(const char* cert)
    }
 
    return 1;
+}
+
+int SSLTransport::initClientCTX_ASN1(int len, const unsigned char* d)
+{
+  if (!(m_pCTX = SSL_CTX_new(TLSv1_client_method())) ||
+      !SSL_CTX_use_certificate_ASN1(m_pCTX, len, d))
+    return -1;
+  return 1;
 }
 
 int SSLTransport::open(const char* ip, const int& port)
