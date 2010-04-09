@@ -86,6 +86,8 @@ public:
    };
    static void* service(void* s);
    static void* serviceEx(void* p);
+   static void* xdcs_service(void* s);
+   static void* xdcs_serviceEx(void* p);
    int processSlaveJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processUserJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processMasterJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);

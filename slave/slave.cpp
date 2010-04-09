@@ -288,14 +288,14 @@ void Slave::run()
    SectorMsg* msg = new SectorMsg;
    msg->resize(65536);
 
-   cout << "slave process: " << "GMP " << m_iLocalPort << " DATA " << m_DataChn.getPort() << endl;
+   //cout << "slave process: " << "GMP " << m_iLocalPort << " DATA " << m_DataChn.getPort() << endl;
 
    while (true)
    {
       if (m_GMP.recvfrom(ip, port, id, msg) < 0)
          break;
 
-      cout << "recv cmd " << ip << " " << port << " type " << msg->getType() << endl;
+      //cout << "recv cmd " << ip << " " << port << " type " << msg->getType() << endl;
 
       // a slave only accepts commands from the masters
       Address addr;
@@ -428,7 +428,7 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
 
    case 110: // open file
    {
-      cout << "===> start file server " << ip << " " << port << endl;
+     //cout << "===> start file server " << ip << " " << port << endl;
 
       Param2* p = new Param2;
       p->serv_instance = this;
@@ -524,7 +524,7 @@ int Slave::processDCCmd(const string& ip, const int port, int id, SectorMsg* msg
       p->master_ip = ip;
       p->master_port = port;
 
-      cout << "starting SPE ... " << p->speid << " " << p->client_data_port << " " << p->function << " " << p->transid << endl;
+      //cout << "starting SPE ... " << p->speid << " " << p->client_data_port << " " << p->function << " " << p->transid << endl;
       char* tmp = new char[64 + p->function.length()];
       sprintf(tmp, "starting SPE ... %d %d %s %d.", p->speid, p->client_data_port, p->function.c_str(), p->transid);
       m_SectorLog.insert(tmp);

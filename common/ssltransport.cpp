@@ -136,8 +136,10 @@ int SSLTransport::initClientCTX(const char* cert)
 
 int SSLTransport::initClientCTX_ASN1(int len, const unsigned char* d)
 {
-  if (!(m_pCTX = SSL_CTX_new(TLSv1_client_method())) ||
-      !SSL_CTX_use_certificate_ASN1(m_pCTX, len, d))
+   m_pCTX = SSL_CTX_new(TLSv1_client_method());
+   if (!m_pCTX)
+      return -1;
+   if (!SSL_CTX_use_certificate_ASN1(m_pCTX, len, d))
     return -1;
   return 1;
 }
@@ -227,7 +229,8 @@ int SSLTransport::connect(const char* host, const int& port)
    if (SSL_connect(m_pSSL) <= 0)
       return SectorError::E_SECURITY;
 
-   if (SSL_get_verify_result(m_pSSL) != X509_V_OK)
+   int r = SSL_get_verify_result(m_pSSL);
+   if (r != X509_V_OK && r != X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT)
    {
       cerr << "failed to verify SSL certificate.\n";
       return SectorError::E_SECURITY;
