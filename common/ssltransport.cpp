@@ -110,9 +110,11 @@ int SSLTransport::initServerCTX(const char* cert, const char* key)
 int SSLTransport::initServerCTX_ASN1(int clen, const unsigned char* cd, int klen, const unsigned char* kd)
 {
    m_pCTX = SSL_CTX_new(TLSv1_server_method());
-   if (!(m_pCTX = SSL_CTX_new(TLSv1_server_method())) ||
-       !SSL_CTX_use_certificate_ASN1(m_pCTX, clen, cd) || 
-       !SSL_CTX_use_PrivateKey_ASN1(EVP_PKEY_RSA, m_pCTX, kd, klen))
+   if (!m_pCTX)
+     return -1;
+   if (!SSL_CTX_use_certificate_ASN1(m_pCTX, clen, cd))
+     return -1;
+   if (!SSL_CTX_use_PrivateKey_ASN1(EVP_PKEY_RSA, m_pCTX, kd, klen))
      return -1;
    return 1;
 }

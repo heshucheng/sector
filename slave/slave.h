@@ -158,6 +158,7 @@ public:
 
 public:
    int init(const char* base = NULL);
+   int xdcs_init();
    int connect();
    void run();
 
