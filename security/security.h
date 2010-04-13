@@ -61,7 +61,7 @@ struct IPRange
    uint32_t m_uiMask;
 };
 
-class User
+class SUser
 {
 public:
    int serialize(const std::vector<std::string>& input, std::string& buf) const;
@@ -84,7 +84,7 @@ class SSource
 {
 public:
    virtual int loadACL(std::vector<IPRange>& acl, const void* src) = 0;
-   virtual int loadUsers(std::map<std::string, User>& users, const void* src) = 0;
+   virtual int loadUsers(std::map<std::string, SUser>& users, const void* src) = 0;
 
 public:
    //virtual int passwd(const std::string& user, const std::string& password);
@@ -98,6 +98,7 @@ public:
 
 public:
    int init(const int& port, const char* cert, const char* key);
+   int init_ASN1(const int& port, int clen, const unsigned char *cd, int klen, const unsigned char *kd);
    void close();
 
    int loadMasterACL(SSource* src, const void* param);
@@ -124,14 +125,14 @@ private:
    int m_iPort;
    SSLTransport m_SSL;
 
-private:
+public:
    std::vector<IPRange> m_vMasterACL;
    std::vector<IPRange> m_vSlaveACL;
-   std::map<std::string, User> m_mUsers;
+   std::map<std::string, SUser> m_mUsers;
 
 private:
    static bool match(const std::vector<IPRange>& acl, const char* ip);
-   static const User* match(const std::map<std::string, User>& users, const char* name, const char* password, const char* ip);
+   static const SUser* match(const std::map<std::string, SUser>& users, const char* name, const char* password, const char* ip);
 };
 
 #endif

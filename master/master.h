@@ -44,7 +44,7 @@ written by
 
 #include <gmp.h>
 #include <transport.h>
-#include <log.h>
+#include "../common/log.h"
 #include <conf.h>
 #include <index.h>
 #include <index2.h>
@@ -55,7 +55,7 @@ written by
 #include <slavemgmt.h>
 #include <transaction.h>
 #include <user.h>
-#include <threadpool.h>
+#include "../common/threadpool.h"
 	
 struct SlaveAddr
 {
@@ -71,11 +71,12 @@ public:
 
 public:
    int init();
+   int xdcs_init();
    int join(const char* ip, const int& port);
    int run();
    int stop();
 
-private:
+ private:
    ThreadJobQueue m_ServiceJobQueue;			// job queue for service thread pool
    struct ServiceJobParam
    {
@@ -85,6 +86,8 @@ private:
    };
    static void* service(void* s);
    static void* serviceEx(void* p);
+   static void* xdcs_service(void* s);
+   static void* xdcs_serviceEx(void* p);
    int processSlaveJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processUserJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processMasterJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
@@ -108,10 +111,10 @@ private:
    int sync(const char* fileinfo, const int& size, const int& type);
    int processSyncCmd(const std::string& ip, const int port,  const User* user, const int32_t key, int id, SectorMsg* msg);
 
-private:
+ private:
    inline void reject(const std::string& ip, const int port, int id, int32_t code);
 
-private:
+ private:
    static void* replica(void* s);
 
    pthread_mutex_t m_ReplicaLock;
@@ -125,7 +128,7 @@ private:
 
    int populateSpecialRep(const std::string& conf, std::map<std::string, int>& special);
 
-private:
+ private:
    CGMP m_GMP;						// GMP messenger
 
    MasterConf m_SysConfig;				// master configuration
@@ -152,11 +155,11 @@ private:
    Routing m_Routing;					// master routing module
    uint32_t m_iRouterKey;				// identification for this master
 
-private:
+ private:
    std::map<std::string, SlaveAddr> m_mSlaveAddrRec;	// slave and its executale path
    void loadSlaveAddr(const std::string& file);
 
-private:
+ private:
    int64_t m_llStartTime;
    int serializeSysStat(char*& buf, int& size);
 };

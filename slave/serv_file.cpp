@@ -71,7 +71,7 @@ void* Slave::fileHandler(void* p)
 
    bool run = true;
 
-   cout << "rendezvous connect source " << src_ip << " " << src_port << " " << filename << endl;
+   // cout << "rendezvous connect source " << src_ip << " " << src_port << " " << filename << endl;
 
    if (self->m_DataChn.connect(src_ip, src_port) < 0)
    {
@@ -100,7 +100,7 @@ void* Slave::fileHandler(void* p)
       }
    }
 
-   cout << "connected\n";
+   // cout << "connected\n";
 
    timeval t1, t2;
    gettimeofday(&t1, 0);
@@ -337,7 +337,7 @@ void* Slave::fileHandler(void* p)
       avgWS = wb / duration * 8.0 / 1000000.0;
    }
 
-   cout << "file server closed " << src_ip << " " << src_port << " " << avgRS << endl;
+   // cout << "file server closed " << src_ip << " " << src_port << " " << avgRS << endl;
 
    char* tmp = new char[64 + sname.length()];
    sprintf(tmp, "file server closed ... %s %f %f.", sname.c_str(), avgRS, avgWS);
@@ -415,7 +415,7 @@ void* Slave::copy(void* p)
 
    int64_t size = *(int64_t*)(msg.getData() + 72);
 
-   //cout << "rendezvous connect " << ip << " " << port << endl;
+   // cout << "rendezvous connect " << ip << " " << port << endl;
    if (self->m_DataChn.connect(ip, port) < 0)
       return NULL;
 

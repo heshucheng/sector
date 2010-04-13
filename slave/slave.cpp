@@ -112,7 +112,7 @@ int Slave::init(const char* base)
    //copy permanent sphere libraries
    system((string("cp ") + m_strBase + "/sphere/*.so "  + m_strHomeDir + "/.sphere/perm/").c_str());
 
-   cout << "scanning " << m_strHomeDir << endl;
+   // cout << "scanning " << m_strHomeDir << endl;
    if (m_SysConfig.m_MetaType == DISK)
       m_pLocalFile = new Index2;
    else
@@ -275,7 +275,7 @@ int Slave::connect()
    // initialize slave statistics
    m_SlaveStat.init();
 
-   cout << "This Sector slave is successfully initialized and running now.\n";
+   // cout << "This Sector slave is successfully initialized and running now.\n";
 
    return 1;
 }
@@ -288,14 +288,14 @@ void Slave::run()
    SectorMsg* msg = new SectorMsg;
    msg->resize(65536);
 
-   cout << "slave process: " << "GMP " << m_iLocalPort << " DATA " << m_DataChn.getPort() << endl;
+   //cout << "slave process: " << "GMP " << m_iLocalPort << " DATA " << m_DataChn.getPort() << endl;
 
    while (true)
    {
       if (m_GMP.recvfrom(ip, port, id, msg) < 0)
          break;
 
-      cout << "recv cmd " << ip << " " << port << " type " << msg->getType() << endl;
+      //cout << "recv cmd " << ip << " " << port << " type " << msg->getType() << endl;
 
       // a slave only accepts commands from the masters
       Address addr;
@@ -428,7 +428,7 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
 
    case 110: // open file
    {
-      cout << "===> start file server " << ip << " " << port << endl;
+     //cout << "===> start file server " << ip << " " << port << endl;
 
       Param2* p = new Param2;
       p->serv_instance = this;
@@ -524,7 +524,7 @@ int Slave::processDCCmd(const string& ip, const int port, int id, SectorMsg* msg
       p->master_ip = ip;
       p->master_port = port;
 
-      cout << "starting SPE ... " << p->speid << " " << p->client_data_port << " " << p->function << " " << p->transid << endl;
+      //cout << "starting SPE ... " << p->speid << " " << p->client_data_port << " " << p->function << " " << p->transid << endl;
       char* tmp = new char[64 + p->function.length()];
       sprintf(tmp, "starting SPE ... %d %d %s %d.", p->speid, p->client_data_port, p->function.c_str(), p->transid);
       m_SectorLog.insert(tmp);
@@ -681,7 +681,7 @@ int Slave::report(const string& master_ip, const int& master_port, const int32_t
       pos += bufsize + 4;
    }
 
-   cout << "report " << master_ip << " " << master_port << " " << num << endl;
+   // cout << "report " << master_ip << " " << master_port << " " << num << endl;
 
    if (m_GMP.rpc(master_ip.c_str(), master_port, &msg, &msg) < 0)
       return -1;
@@ -776,7 +776,7 @@ int Slave::reportSphere(const string& master_ip, const int& master_port, const i
       msg.setData(12 + 68 * i + 64, (char*)&((*bad)[i].m_iPort), 4);
    }
 
-   cout << "reportSphere " << master_ip << " " << master_port << " " << transid << endl;
+   // cout << "reportSphere " << master_ip << " " << master_port << " " << transid << endl;
 
    if (m_GMP.rpc(master_ip.c_str(), master_port, &msg, &msg) < 0)
       return -1;

@@ -47,11 +47,11 @@ class FileSrc: public SSource
 {
 public:
    virtual int loadACL(std::vector<IPRange>& acl, const void* src);
-   virtual int loadUsers(std::map<std::string, User>& users, const void* src);
+   virtual int loadUsers(std::map<std::string, SUser>& users, const void* src);
 
 private:
    int parseIPRange(IPRange& ipr, const char* ip);
-   int parseUser(User& user, const char* name, const char* ufile);
+   int parseUser(SUser& user, const char* name, const char* ufile);
 };
 
 #endif

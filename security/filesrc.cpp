@@ -76,7 +76,7 @@ int FileSrc::loadACL(vector<IPRange>& acl, const void* src)
    return acl.size();
 }
 
-int FileSrc::loadUsers(map<string, User>& users, const void* src)
+int FileSrc::loadUsers(map<string, SUser>& users, const void* src)
 {
    string path = (char*)src;
 
@@ -106,7 +106,7 @@ int FileSrc::loadUsers(map<string, User>& users, const void* src)
          continue;
       }
 
-      User u;
+      SUser u;
       if (parseUser(u, namelist[i]->d_name, (path + "/" + namelist[i]->d_name).c_str()) > 0)
          users[u.m_strName] = u;
 
@@ -177,7 +177,7 @@ int FileSrc::parseIPRange(IPRange& ipr, const char* ip)
    return 0;
 }
 
-int FileSrc::parseUser(User& user, const char* name, const char* ufile)
+int FileSrc::parseUser(SUser& user, const char* name, const char* ufile)
 {
    user.m_iID = 0;
    user.m_strName = name;
