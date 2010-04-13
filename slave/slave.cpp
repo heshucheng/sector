@@ -112,7 +112,7 @@ int Slave::init(const char* base)
    //copy permanent sphere libraries
    system((string("cp ") + m_strBase + "/sphere/*.so "  + m_strHomeDir + "/.sphere/perm/").c_str());
 
-   cout << "scanning " << m_strHomeDir << endl;
+   // cout << "scanning " << m_strHomeDir << endl;
    if (m_SysConfig.m_MetaType == DISK)
       m_pLocalFile = new Index2;
    else
@@ -275,7 +275,7 @@ int Slave::connect()
    // initialize slave statistics
    m_SlaveStat.init();
 
-   cout << "This Sector slave is successfully initialized and running now.\n";
+   // cout << "This Sector slave is successfully initialized and running now.\n";
 
    return 1;
 }
@@ -681,7 +681,7 @@ int Slave::report(const string& master_ip, const int& master_port, const int32_t
       pos += bufsize + 4;
    }
 
-   cout << "report " << master_ip << " " << master_port << " " << num << endl;
+   // cout << "report " << master_ip << " " << master_port << " " << num << endl;
 
    if (m_GMP.rpc(master_ip.c_str(), master_port, &msg, &msg) < 0)
       return -1;
@@ -775,7 +775,7 @@ int Slave::reportSphere(const string& master_ip, const int& master_port, const i
       msg.setData(12 + 68 * i + 64, (char*)&((*bad)[i].m_iPort), 4);
    }
 
-   cout << "reportSphere " << master_ip << " " << master_port << " " << transid << endl;
+   // cout << "reportSphere " << master_ip << " " << master_port << " " << transid << endl;
 
    if (m_GMP.rpc(master_ip.c_str(), master_port, &msg, &msg) < 0)
       return -1;

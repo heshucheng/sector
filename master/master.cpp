@@ -46,6 +46,7 @@ written by
 #include <stack>
 #include <sstream>
 #include "master.h"
+#include <assert.h>
 
 using namespace std;
 
@@ -1375,6 +1376,7 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       }
 
       int msgid = 0;
+      assert(addr.begin()->m_iPort);
       m_GMP.sendto(addr.begin()->m_strIP.c_str(), addr.begin()->m_iPort, msgid, msg);
 
       m_pMetadata->create(msg->getData(), true);

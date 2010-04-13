@@ -208,13 +208,13 @@ void* Slave::SPEHandler(void* p)
 
    SectorMsg msg;
 
-   cout << "rendezvous connect " << ip << " " << dataport << endl;
+   // cout << "rendezvous connect " << ip << " " << dataport << endl;
    if (self->m_DataChn.connect(ip, dataport) < 0)
    {
       self->logError(2, ip, ctrlport, function);
       return NULL;
    }
-   cout << "connected\n";
+   // cout << "connected\n";
 
    // read outupt parameters
    int buckets;
@@ -288,7 +288,7 @@ void* Slave::SPEHandler(void* p)
       string datafile = dataseg + 20;
       sprintf(dest.m_pcLocalFileID, ".%d", dsid);
       delete [] dataseg;
-      cout << "new job " << datafile << " " << offset << " " << totalrows << endl;
+      // cout << "new job " << datafile << " " << offset << " " << totalrows << endl;
 
       int64_t* index = NULL;
       if ((totalrows > 0) && (rows != 0))
@@ -451,7 +451,7 @@ void* Slave::SPEHandler(void* p)
       else
          progress = 100;
 
-      cout << "completed " << progress << " " << ip << " " << ctrlport << endl;
+      // cout << "completed " << progress << " " << ip << " " << ctrlport << endl;
 
       msg.setData(4, (char*)&progress, 4);
 
@@ -461,7 +461,7 @@ void* Slave::SPEHandler(void* p)
          int id = 0;
          self->m_GMP.sendto(ip.c_str(), ctrlport, id, &msg);
 
-         cout << "sending data back... " << buckets << endl;
+         // cout << "sending data back... " << buckets << endl;
          self->sendResultToClient(buckets, dest.m_piSArray, dest.m_piRArray, result, ip, dataport, transid);
          dest.reset(buckets);
 
@@ -505,7 +505,7 @@ void* Slave::SPEHandler(void* p)
    self->closeLibrary(lh);
    self->m_DataChn.remove(ip, dataport);
 
-   cout << "comp server closed " << ip << " " << ctrlport << " " << duration << endl;
+   // cout << "comp server closed " << ip << " " << ctrlport << " " << duration << endl;
 
    delete [] param;
 
@@ -561,7 +561,7 @@ void* Slave::SPEShuffler(void* p)
    pthread_create(&ex, NULL, SPEShufflerEx, p);
    pthread_detach(ex);
 
-   cout << "SPE Shuffler " << path << " " << localfile << " " << bucketnum << endl;
+   // cout << "SPE Shuffler " << path << " " << localfile << " " << bucketnum << endl;
 
    while (true)
    {
@@ -776,7 +776,7 @@ void* Slave::SPEShufflerEx(void* p)
 
    self->reportSphere(master_ip, master_port, transid);
 
-   cout << "bucket completed 100 " << client_ip << " " << client_port << endl;
+   // cout << "bucket completed 100 " << client_ip << " " << client_port << endl;
    SectorMsg msg;
    msg.setType(1); // success, return result
    msg.setData(0, (char*)&(bucketid), 4);
@@ -833,7 +833,7 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
       int srcport = *(int*)(msg.getData() + 64);
       int session = *(int*)(msg.getData() + 68);
 
-      cout << "rendezvous connect " << srcip << " " << srcport << endl;
+      // cout << "rendezvous connect " << srcip << " " << srcport << endl;
       if (m_DataChn.connect(srcip, srcport) < 0)
          return -1;
 
@@ -907,7 +907,7 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
       int srcport = *(int*)(msg.getData() + 64);
       int session = *(int*)(msg.getData() + 68);
 
-      cout << "rendezvous connect " << srcip << " " << srcport << endl;
+      // cout << "rendezvous connect " << srcip << " " << srcport << endl;
       if (m_DataChn.connect(srcip, srcport) < 0)
          return -1;
 
@@ -1101,8 +1101,9 @@ int Slave::acceptLibrary(const int& key, const string& ip, int port, int session
          fstream ofs((string(path) + "/" + lib).c_str(), ios::out | ios::trunc | ios::binary);
          ofs.write(buf, size);
          ofs.close();
-
-         system((string("chmod +x ") + reviseSysCmdPath(path) + "/" + reviseSysCmdPath(lib)).c_str());
+         
+         //system((string("chmod +x ") + reviseSysCmdPath(path) + "/" + reviseSysCmdPath(lib)).c_str());
+         chmod((reviseSysCmdPath(path) + "/" + reviseSysCmdPath(lib)).c_str(), S_IRUSR|S_IWUSR|S_IXUSR);
       }
 
       delete [] lib;

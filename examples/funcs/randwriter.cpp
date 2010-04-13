@@ -9,6 +9,10 @@
 #include <cstdlib>
 #include <sphere.h>
 
+//#define SIZE_PER_NODE 100000000000ll // 10GB
+#define SIZE_PER_NODE 100000000 // 100MB
+#define RECS_PER_NODE (SIZE_PER_NODE/100)
+
 using namespace std;
 
 extern "C"
@@ -53,8 +57,7 @@ int randwriter(const SInput* input, SOutput* output, SFile* file)
    
    keyinit();
 
-   //10GB = 100 * 100000000
-   for (long long int i = 0; i < 100000000; ++ i)
+   for (long long int i = 0; i < RECS_PER_NODE; ++ i)
    {
       keygen(record);
       ofs.write(record, 100);
@@ -64,7 +67,7 @@ int randwriter(const SInput* input, SOutput* output, SFile* file)
 
    ofstream idx((file->m_strHomeDir + filename + ".idx").c_str(), ios::out | ios::binary | ios::trunc);
 
-   for (long long int i = 0; i < 100000001; ++ i)
+   for (long long int i = 0; i < RECS_PER_NODE + 1; ++ i)
    {
       long long int d = i * 100;
       idx.write((char*)&d, 8);

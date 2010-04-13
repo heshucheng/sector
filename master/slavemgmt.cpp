@@ -45,6 +45,7 @@ written by
 #include <cstring>
 #include <common.h>
 #include <meta.h>
+#include <assert.h>
 
 using namespace std;
 
@@ -375,7 +376,9 @@ int SlaveManager::chooseIONode(set<int>& loclist, const Address& client, int mod
       set<int>::iterator n = avail.begin();
       for (int i = 0; i < r; ++ i)
          n ++;
+      //printf("%d\n", m_mSlaveList[*n].m_iPort);
       sl.push_back(m_mSlaveList[*n]);
+      assert(sl.back().m_iPort);
 
       // if this is not a high reliable write, one node is enough
       if ((mode & SF_MODE::HiRELIABLE) == 0)
@@ -394,9 +397,9 @@ int SlaveManager::chooseIONode(set<int>& loclist, const Address& client, int mod
             continue;
 
          sl.push_back(sn);
+         assert(sl.back().m_iPort);
       }
    }
-
    return sl.size();
 }
 
