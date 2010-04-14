@@ -1126,7 +1126,7 @@ int Slave::openLibrary(const int& key, const string& lib, void*& lh)
 
       if (NULL == lh)
       {
-         cerr << dlerror() << endl;
+         // cerr << dlerror() << endl;
          return -1;
       }
    }

@@ -73,6 +73,7 @@ public:
    int init();
    int xdcs_init();
    int join(const char* ip, const int& port);
+   int xdcs_join(const char* ip, const int& port);
    int run();
    int stop();
 
