@@ -500,7 +500,7 @@ void* Slave::SPEHandler(void* p)
    }
 
    gettimeofday(&t2, 0);
-   int duration = t2.tv_sec - t1.tv_sec;
+   // int duration = t2.tv_sec - t1.tv_sec;
 
    self->closeLibrary(lh);
    self->m_DataChn.remove(ip, dataport);
@@ -536,7 +536,7 @@ void* Slave::SPEShuffler(void* p)
    int client_data_port = ((Param5*)p)->client_data_port;
    string path = ((Param5*)p)->path;
    string localfile = ((Param5*)p)->filename;
-   int bucketnum = ((Param5*)p)->bucketnum;
+   // int bucketnum = ((Param5*)p)->bucketnum;
    CGMP* gmp = ((Param5*)p)->gmp;
    string function = ((Param5*)p)->function;
 

@@ -50,7 +50,7 @@ int SectorError::init()
    s_mErrorMsg.clear();
    s_mErrorMsg[-1] = "unknown error.";
    s_mErrorMsg[-1001] = "permission is not allowed for the operation on the specified file/dir.";
-   s_mErrorMsg[-1002] = "file/dir alreadt exists.";
+   s_mErrorMsg[-1002] = "file/dir already exists.";
    s_mErrorMsg[-1003] = "file/dir does not exist.";
    s_mErrorMsg[-1004] = "file/dir is busy.";
    s_mErrorMsg[-1005] = "a failure happens on the local file system.";

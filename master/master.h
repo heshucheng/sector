@@ -71,9 +71,9 @@ public:
 
 public:
    int init();
-   int xdcs_init();
+   int vz_init();
    int join(const char* ip, const int& port);
-   int xdcs_join(const char* ip, const int& port);
+   int vz_join(const char* ip, const int& port);
    int run();
    int stop();
 
@@ -87,8 +87,8 @@ public:
    };
    static void* service(void* s);
    static void* serviceEx(void* p);
-   static void* xdcs_service(void* s);
-   static void* xdcs_serviceEx(void* p);
+   static void* vz_service(void* s);
+   static void* vz_serviceEx(void* p);
    int processSlaveJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processUserJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);
    int processMasterJoin(SSLTransport& s, SSLTransport& secconn, const std::string& ip);

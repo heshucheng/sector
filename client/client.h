@@ -65,7 +65,9 @@ public:
 
 public:
    int init(const std::string& server, const int& port);
-   int login(const std::string& username, const std::string& password, const char* cert = NULL);
+   int login(const std::string& username, const std::string& password, 
+             const char* cert = NULL, int default_asn1_cert_len = 0, 
+             const unsigned char *default_asn1_cert = 0);
    int login(const std::string& serv_ip, const int& serv_port);
    int logout();
    int close();

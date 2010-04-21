@@ -92,7 +92,7 @@ int SSLTransport::initServerCTX(const char* cert, const char* key)
    m_pCTX = SSL_CTX_new(TLSv1_server_method());
    if (m_pCTX == NULL)
    {
-      cerr << "Failed to init CTX. Aborting.\n";
+      // cerr << "Failed to init CTX. Aborting.\n";
       return SectorError::E_INITCTX;
    }
 
@@ -125,7 +125,7 @@ int SSLTransport::initClientCTX(const char* cert)
 
    if(!SSL_CTX_load_verify_locations(m_pCTX, cert, NULL))
    {
-      cerr << "Error loading trust store: " << cert << endl;
+      // cerr << "Error loading trust store: " << cert << endl;
       SSL_CTX_free(m_pCTX);
       m_pCTX = NULL;
       return SectorError::E_INITCTX;
@@ -163,7 +163,7 @@ int SSLTransport::open(const char* ip, const int& port)
 
    if (::bind(m_iSocket, (sockaddr*)&addr, sizeof(sockaddr_in)) < 0)
    {
-      cerr << "SSL socket unable to bind on address " << ip << " " << port << endl;
+      // cerr << "SSL socket unable to bind on address " << ip << " " << port << endl;
       return SectorError::E_RESOURCE;
    }
 
@@ -210,7 +210,7 @@ int SSLTransport::connect(const char* host, const int& port)
 
    if (NULL == he)
    {
-      cerr << "SSL connect: invalid address " << host << " " << port << endl;
+      // cerr << "SSL connect: invalid address " << host << " " << port << endl;
       return SectorError::E_CONNECTION;
    }
 
@@ -219,7 +219,7 @@ int SSLTransport::connect(const char* host, const int& port)
 
    if (::connect(m_iSocket, (sockaddr*)&addr, sizeof(sockaddr_in)) < 0)
    {
-      cerr << "SSL connect: unable to connect to server.\n";
+      // cerr << "SSL connect: unable to connect to server.\n";
       return SectorError::E_CONNECTION;
    }
 
@@ -232,7 +232,7 @@ int SSLTransport::connect(const char* host, const int& port)
    int r = SSL_get_verify_result(m_pSSL);
    if (r != X509_V_OK && r != X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT)
    {
-      cerr << "failed to verify SSL certificate.\n";
+      // cerr << "failed to verify SSL certificate.\n";
       return SectorError::E_SECURITY;
    }
 

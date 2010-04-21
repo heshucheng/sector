@@ -110,7 +110,9 @@ int Client::init(const string& server, const int& port)
    return 0;
 }
 
-int Client::login(const string& username, const string& password, const char* cert)
+int Client::login(const string& username, const string& password, 
+                  const char* cert, int default_asn1_cert_len, 
+                  const unsigned char *default_asn1_cert)
 {
    if (m_iKey > 0)
       return m_iKey;
@@ -125,8 +127,15 @@ int Client::login(const string& username, const string& password, const char* ce
 
    int result;
    SSLTransport secconn;
-   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0)
-      return result;
+
+   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0) {
+     if (default_asn1_cert) {
+       if ((result = secconn.initClientCTX_ASN1(default_asn1_cert_len, default_asn1_cert)) < 0)
+         return result;
+     } else
+       return result;
+   }
+     
    if ((result = secconn.open(NULL, 0)) < 0)
       return result;
 

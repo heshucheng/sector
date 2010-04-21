@@ -158,9 +158,9 @@ public:
 
 public:
    int init(const char* base = NULL);
-   int xdcs_init();
+   int vz_init();
    int connect();
-   int xdcs_connect();
+   int vz_connect();
    void run();
 
 private:
