@@ -129,7 +129,7 @@ int FSClient::open(const string& filename, int mode, const string& hint)
    m_iSlaveDataPort = *(int*)(msg.getData() + 64);
    m_iSession = *(int*)(msg.getData() + 68);
 
-   cerr << "open file " << filename << " " << m_strSlaveIP << " " << m_iSlaveDataPort << endl;
+   // cerr << "open file " << filename << " " << m_strSlaveIP << " " << m_iSlaveDataPort << endl;
    if (m_pClient->m_DataChn.connect(m_strSlaveIP, m_iSlaveDataPort) < 0)
       return SectorError::E_CONNECTION;
 

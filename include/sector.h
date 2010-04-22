@@ -181,7 +181,8 @@ class SectorFile
 {
 friend class Sector;
 
-private:
+// private:
+public:
    SectorFile() {}
    ~SectorFile() {}
    const SectorFile& operator=(const SectorFile&) {return *this;}

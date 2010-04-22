@@ -43,6 +43,8 @@ written by
 
 using namespace std;
 
+ClientMgmt g_ClientMgmt;
+
 ClientMgmt::ClientMgmt():
 m_iID(0)
 {
