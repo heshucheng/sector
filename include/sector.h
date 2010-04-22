@@ -327,7 +327,7 @@ public:
    static int init();
    static std::string getErrorMsg(int ecode);
 
-private:
+// private:
    static std::map<int, std::string> s_mErrorMsg;
 };
 

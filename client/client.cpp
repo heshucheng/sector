@@ -80,7 +80,7 @@ int Client::init(const string& server, const int& port)
    struct hostent* serverip = gethostbyname(server.c_str());
    if (NULL == serverip)
    {
-      cerr << "incorrect host name.\n";
+      // cerr << "incorrect host name.\n";
       return -1;
    }
    m_strServerHost = server;
@@ -93,14 +93,14 @@ int Client::init(const string& server, const int& port)
    Transport::initialize();
    if (m_GMP.init(0) < 0)
    {
-      cerr << "unable to init GMP.\n ";
+      // cerr << "unable to init GMP.\n ";
       return -1;
    }
 
    int dataport = 0;
    if (m_DataChn.init("", dataport) < 0)
    {
-      cerr << "unable to init data channel.\n";
+      // cerr << "unable to init data channel.\n";
       return -1;
    }
 
@@ -141,7 +141,7 @@ int Client::login(const string& username, const string& password,
 
    if ((result = secconn.connect(m_strServerHost.c_str(), m_iServerPort)) < 0)
    {
-      cerr << "cannot set up secure connection to the master.\n";
+      // cerr << "cannot set up secure connection to the master.\n";
       return result;
    }
 
@@ -235,7 +235,7 @@ int Client::login(const string& serv_ip, const int& serv_port)
 
    if ((result = secconn.connect(serv_ip.c_str(), serv_port)) < 0)
    {
-      cerr << "cannot set up secure connection to the master.\n";
+      // cerr << "cannot set up secure connection to the master.\n";
       return result;
    }
 
