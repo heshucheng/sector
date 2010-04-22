@@ -48,27 +48,27 @@ map<int, string> SectorError::s_mErrorMsg;
 int SectorError::init()
 {
    s_mErrorMsg.clear();
-   s_mErrorMsg[-1] = "unknown error.";
-   s_mErrorMsg[-1001] = "permission is not allowed for the operation on the specified file/dir.";
-   s_mErrorMsg[-1002] = "file/dir already exists.";
-   s_mErrorMsg[-1003] = "file/dir does not exist.";
-   s_mErrorMsg[-1004] = "file/dir is busy.";
-   s_mErrorMsg[-1005] = "a failure happens on the local file system.";
-   s_mErrorMsg[-1006] = "directory is not empty.";
-   s_mErrorMsg[-2000] = "security check (certificate/account/password/acl) failed.";
-   s_mErrorMsg[-2001] = "no certificate found or wrong certificate.";
-   s_mErrorMsg[-2002] = "the account does not exist.";
-   s_mErrorMsg[-2003] = "the password is incorrect.";
-   s_mErrorMsg[-2004] = "the request is from an illegal IP address.";
-   s_mErrorMsg[-2005] = "failed to initialize SSL CTX.";
-   s_mErrorMsg[-2006] = "no response from security server.";
-   s_mErrorMsg[-2007] = "client timeout and was kicked out by server.";
-   s_mErrorMsg[-3000] = "connection fails.";
-   s_mErrorMsg[-4000] = "no enough resource (memory/disk) is available.";
-   s_mErrorMsg[-5000] = "a timeout event happened.";
-   s_mErrorMsg[-6000] = "at least one parameter is invalid.";
-   s_mErrorMsg[-6001] = "the operation is not supported.";
-   s_mErrorMsg[-7001] = "at least one bucket process has failed.";
+   s_mErrorMsg[-1] = "Unknown error";
+   s_mErrorMsg[-1001] = "Permission denied";
+   s_mErrorMsg[-1002] = "File exists";
+   s_mErrorMsg[-1003] = "No such file or directory";
+   s_mErrorMsg[-1004] = "Device or resource busy";
+   s_mErrorMsg[-1005] = "Local filesystem error";
+   s_mErrorMsg[-1006] = "Directory not empty";
+   s_mErrorMsg[-2000] = "Security check failed";
+   s_mErrorMsg[-2001] = "No certificate found or wrong certificate";
+   s_mErrorMsg[-2002] = "Account does not exist";
+   s_mErrorMsg[-2003] = "Password is incorrect";
+   s_mErrorMsg[-2004] = "Request from an illegal IP address";
+   s_mErrorMsg[-2005] = "Failed to initialize SSL CTX";
+   s_mErrorMsg[-2006] = "No response from security server";
+   s_mErrorMsg[-2007] = "Client timeout";
+   s_mErrorMsg[-3000] = "Connection failed";
+   s_mErrorMsg[-4000] = "Out of resource";
+   s_mErrorMsg[-5000] = "Timeout";
+   s_mErrorMsg[-6000] = "Invalid argument";
+   s_mErrorMsg[-6001] = "Operation not supported";
+   s_mErrorMsg[-7001] = "Bucket process failed";
 
    return s_mErrorMsg.size();
 }
