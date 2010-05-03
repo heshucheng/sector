@@ -1,5 +1,5 @@
 /*****************************************************************************
-Copyright (c) 2005 - 2009, The Board of Trustees of the University of Illinois.
+Copyright (c) 2005 - 2010, The Board of Trustees of the University of Illinois.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 04/07/2010
+   Yunhong Gu, last updated 04/23/2010
 *****************************************************************************/
 
 #include <string.h>
@@ -44,39 +44,92 @@ written by
 
 using namespace std;
 
-void StatCache::insert(const string& path)
+Cache::Cache():
+m_llCacheSize(0),
+m_llMaxCacheSize(10000000),
+m_llMaxCacheTime(10000000)
 {
-   map<string, StatRec>::iterator s = m_mOpenedFiles.find(path);
+   pthread_mutex_init(&m_Lock, NULL);
+}
+
+Cache::~Cache()
+{
+   pthread_mutex_destroy(&m_Lock);
+}
+
+int Cache::setMaxCacheSize(const int64_t ms)
+{
+   m_llMaxCacheSize = ms;
+   return 0;
+}
+
+int Cache::setMaxCacheTime(const int64_t mt)
+{
+   m_llMaxCacheTime = mt;
+   return 0;
+}
+
+void Cache::update(const std::string& path, const int64_t& ts, const int64_t& size, bool first)
+{
+   CGuard sg(m_Lock);
+
+   map<string, InfoBlock>::iterator s = m_mOpenedFiles.find(path);
 
    if (s == m_mOpenedFiles.end())
    {
-      StatRec r;
+      InfoBlock r;
       r.m_iCount = 1;
       r.m_bChange = false;
+      r.m_llTimeStamp = ts;
+      r.m_llSize = size;
+      r.m_llLastAccessTime = CTimer::getTime();
       m_mOpenedFiles[path] = r;
+
+      return;
    }
-   else
+
+   // the file has been changed by others, remove all cache data
+   if ((s->second.m_llTimeStamp != ts) || (s->second.m_llSize != size))
    {
-      s->second.m_iCount ++;
+      map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(path);
+      if (c != m_mCacheBlocks.end())
+      {
+         for (list<CacheBlock>::iterator i = c->second.begin(); i != c->second.end(); ++ i)
+            delete [] i->m_pcBlock;
+         m_mCacheBlocks.erase(c);
+      }
+
+      s->second.m_bChange = true;
+      s->second.m_llTimeStamp = ts;
+      s->second.m_llSize = size;
+      s->second.m_llLastAccessTime = CTimer::getTime();
    }
+
+   if (first)
+      s->second.m_iCount ++;
 }
 
-void StatCache::update(const string& path, const int64_t& ts, const int64_t& size)
+void Cache::remove(const std::string& path)
 {
-   map<string, StatRec>::iterator s = m_mOpenedFiles.find(path);
+   CGuard sg(m_Lock);
+
+   map<string, InfoBlock>::iterator s = m_mOpenedFiles.find(path);
 
    if (s == m_mOpenedFiles.end())
       return;
 
-   s->second.m_llTimeStamp = ts;
-   s->second.m_llSize = size;
-
-   s->second.m_bChange = true;
+   if (-- s->second.m_iCount == 0)
+   {
+      if (m_mCacheBlocks.find(path) == m_mCacheBlocks.end())
+      m_mOpenedFiles.erase(s);
+   }
 }
 
-int StatCache::stat(const string& path, SNode& attr)
+int Cache::stat(const string& path, SNode& attr)
 {
-   map<string, StatRec>::iterator s = m_mOpenedFiles.find(path);
+   CGuard sg(m_Lock);
+
+   map<string, InfoBlock>::iterator s = m_mOpenedFiles.find(path);
 
    if (s == m_mOpenedFiles.end())
       return -1;
@@ -86,36 +139,21 @@ int StatCache::stat(const string& path, SNode& attr)
 
    attr.m_llTimeStamp = s->second.m_llTimeStamp;
    attr.m_llSize = s->second.m_llSize;
+
    return 1;
 }
 
-void StatCache::remove(const string& path)
+int Cache::insert(char* block, const std::string& path, const int64_t& offset, const int64_t& size)
 {
-   map<string, StatRec>::iterator s = m_mOpenedFiles.find(path);
+   CGuard sg(m_Lock);
 
+   map<string, InfoBlock>::iterator s = m_mOpenedFiles.find(path);
    if (s == m_mOpenedFiles.end())
-      return;
+      return -1;
 
-   if (-- s->second.m_iCount == 0)
-      m_mOpenedFiles.erase(s);
-}
+   s->second.m_llLastAccessTime = CTimer::getTime();
 
-
-ReadCache::ReadCache():
-m_llCacheSize(0),
-m_llMaxCacheSize(10000000),
-m_llMaxCacheTime(10000000)
-{
-}
-
-ReadCache::~ReadCache()
-{
-}
-
-int ReadCache::insert(char* block, const std::string& path, const int64_t& offset, const int64_t& size)
-{
    CacheBlock cb;
-   cb.m_strFileName = path;
    cb.m_llOffset = offset;
    cb.m_llSize = size;
    cb.m_llCreateTime = CTimer::getTime();
@@ -135,25 +173,15 @@ int ReadCache::insert(char* block, const std::string& path, const int64_t& offse
    return 0;
 }
 
-int ReadCache::remove(const std::string& path)
+int Cache::read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size)
 {
+   CGuard sg(m_Lock);
+
+   map<string, InfoBlock>::iterator s = m_mOpenedFiles.find(path);
+   if (s == m_mOpenedFiles.end())
+      return -1;
+
    map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(path);
-
-   if (c != m_mCacheBlocks.end())
-   {
-      for (list<CacheBlock>::iterator i = c->second.begin(); i != c->second.end(); ++ i)
-         delete [] i->m_pcBlock;
-
-      m_mCacheBlocks.erase(c);
-   }
-
-   return 0;
-}
-
-int ReadCache::read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size)
-{
-   map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(path);
-
    if (c == m_mCacheBlocks.end())
       return 0;
 
@@ -164,6 +192,8 @@ int ReadCache::read(const std::string& path, char* buf, const int64_t& offset, c
       {
          memcpy(buf, i->m_pcBlock + offset - i->m_llOffset, size);
          i->m_llLastAccessTime = CTimer::getTime();
+         // update the file's last access time; it must be equal to the block's last access time
+         s->second.m_llLastAccessTime = i->m_llLastAccessTime;
          return size;
       }
    }
@@ -171,26 +201,38 @@ int ReadCache::read(const std::string& path, char* buf, const int64_t& offset, c
    return 0;
 }
 
-int ReadCache::shrink()
+int Cache::shrink()
 {
-   int64_t currtime = CTimer::getTime();
-
    if (m_llCacheSize < m_llMaxCacheSize)
       return 0;
 
-   for (map<string, list<CacheBlock> >::iterator i = m_mCacheBlocks.begin(); i != m_mCacheBlocks.end(); ++ i)
+   string last_file = "";
+   int64_t latest_time = CTimer::getTime();
+
+   // find the file with the earliest last access time
+   for (map<string, InfoBlock>::iterator i = m_mOpenedFiles.begin(); i != m_mOpenedFiles.end(); ++ i)
    {
-      for (list<CacheBlock>::iterator j = i->second.begin(); j != i->second.end();)
+      if (i->second.m_llLastAccessTime < latest_time)
       {
-         if (currtime - j->m_llLastAccessTime > m_llMaxCacheTime)
+         map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(i->first);
+         if ((c != m_mCacheBlocks.end()) && !c->second.empty())
          {
-            list<CacheBlock>::iterator k = j;
-            ++ j;
-            delete k->m_pcBlock;
-            i->second.erase(k);
+            last_file = i->first;
+            latest_time = i->second.m_llLastAccessTime;
          }
-         else
-            ++ j;
+      }
+   }
+
+   // find the block with the earliest lass access time
+   // currently we assume all blocks have equal size, so removing one block is enough for a new block
+   map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(last_file);
+   for (list<CacheBlock>::iterator i = c->second.begin(); i != c->second.end(); ++ i)
+   {
+      if (i->m_llLastAccessTime == latest_time)
+      {
+         delete i->m_pcBlock;
+         c->second.erase(i);
+         break;
       }
    }
 

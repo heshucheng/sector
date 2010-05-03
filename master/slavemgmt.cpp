@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 02/25/2010
+   Yunhong Gu, last updated 04/25/2010
 *****************************************************************************/
 
 #include <slavemgmt.h>
@@ -50,7 +50,8 @@ written by
 using namespace std;
 
 SlaveManager::SlaveManager():
-m_llLastUpdateTime(-1)
+m_llLastUpdateTime(-1),
+m_llSlaveMinDiskSpace(10000000000LL)
 {
    pthread_mutex_init(&m_SlaveLock, NULL);
 }
@@ -118,6 +119,12 @@ int SlaveManager::init(const char* topoconf)
    m_llLastUpdateTime = CTimer::getTime();
 
    return 1;
+}
+
+int SlaveManager::setSlaveMinDiskSpace(const int64_t& byteSize)
+{
+   m_llSlaveMinDiskSpace = byteSize;
+   return 0;
 }
 
 int SlaveManager::insert(SlaveNode& sn)
@@ -250,8 +257,8 @@ int SlaveManager::chooseReplicaNode(set<int>& loclist, SlaveNode& sn, const int6
       if (m_siBadSlaves.find(i->first) != m_siBadSlaves.end())
          continue;
 
-      // only nodes with more than 10GB disk space are chosen
-      if (i->second.m_llAvailDiskSpace < (10000000000LL + filesize))
+      // only nodes with more than minimum availale disk space are chosen
+      if (i->second.m_llAvailDiskSpace < (m_llSlaveMinDiskSpace + filesize))
          continue;
 
       int level = 0;
@@ -365,8 +372,8 @@ int SlaveManager::chooseIONode(set<int>& loclist, const Address& client, int mod
          if (m_siBadSlaves.find(i->first) != m_siBadSlaves.end())
             continue;
 
-         // only nodes with more than 10GB disk space are chosen
-         if (i->second.m_llAvailDiskSpace > 10000000000LL)
+         // only nodes with more than minimum available disk space are chosen
+         if (i->second.m_llAvailDiskSpace > m_llSlaveMinDiskSpace)
             avail.insert(i->first);
       }
 
@@ -393,7 +400,7 @@ int SlaveManager::chooseIONode(set<int>& loclist, const Address& client, int mod
             locid.insert(j->m_iNodeID);
 
          pthread_mutex_unlock(&m_SlaveLock);
-         if (chooseReplicaNode(locid, sn, 10000000000LL) < 0)
+         if (chooseReplicaNode(locid, sn, m_llSlaveMinDiskSpace) < 0)
             continue;
 
          sl.push_back(sn);
@@ -433,8 +440,8 @@ int SlaveManager::chooseSPENodes(const Address& client, vector<SlaveNode>& sl)
       if (m_siBadSlaves.find(i->first) != m_siBadSlaves.end())
          continue;
 
-      // only nodes with more than 10GB disk space are chosen
-      if (i->second.m_llAvailDiskSpace < 10000000000LL)
+      // only nodes with more than minimum available disk space are chosen
+      if (i->second.m_llAvailDiskSpace < m_llSlaveMinDiskSpace)
          continue;
 
       sl.push_back(i->second);
@@ -497,12 +504,12 @@ int SlaveManager::updateSlaveInfo(const Address& addr, const char* info, const i
    s->second.deserialize(info, len);
    s->second.m_iRetryNum = 0;
 
-   if (s->second.m_llAvailDiskSpace < 10000000000LL)
+   if (s->second.m_llAvailDiskSpace < m_llSlaveMinDiskSpace)
    {
       if (s->second.m_iStatus == 1)
       {
          //char text[64];
-         //sprintf(text, "Slave %s has less than 10GB available disk space left.", s->second.m_strIP.c_str());
+         //sprintf(text, "Slave %s has less than minimum available disk space left.", s->second.m_strIP.c_str());
          //m_SectorLog.insert(text);
 
          s->second.m_iStatus = 2;

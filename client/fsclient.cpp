@@ -115,6 +115,7 @@ int FSClient::open(const string& filename, int mode, const string& hint)
       return *(int32_t*)(msg.getData());
 
    m_llSize = *(int64_t*)(msg.getData() + 72);
+   m_llTimeStamp = *(int64_t*)(msg.getData() + 80);
    m_llCurReadPos = m_llCurWritePos = 0;
 
    m_bRead = mode & 1;
@@ -155,15 +156,18 @@ int FSClient::open(const string& filename, int mode, const string& hint)
    memcpy(m_pcIV, m_pClient->m_pcCryptoIV, 8);
    m_pClient->m_DataChn.setCryptoKey(m_strSlaveIP, m_iSlaveDataPort, m_pcKey, m_pcIV);
 
-   if (m_bWrite)
-      m_pClient->m_StatCache.insert(filename);
+   m_pClient->m_Cache.update(m_strFileName, m_llTimeStamp, m_llSize, true);
 
    return 0;
 }
 
-int64_t FSClient::read(char* buf, const int64_t& size, const int64_t& prefetch)
+int64_t FSClient::read(char* buf, const int64_t& offset, const int64_t& size, const int64_t& prefetch)
 {
    CGuard fg(m_FileLock);
+
+   if ((offset < 0) || (offset > m_llSize))
+      return SectorError::E_INVALID;
+   m_llCurReadPos = offset;
 
    int realsize = size;
    if (m_llCurReadPos + size > m_llSize)
@@ -181,7 +185,7 @@ int64_t FSClient::read(char* buf, const int64_t& size, const int64_t& prefetch)
    }
 
    // check cache
-   int64_t cr = m_pClient->m_ReadCache.read(m_strFileName, buf, m_llCurReadPos, realsize);
+   int64_t cr = m_pClient->m_Cache.read(m_strFileName, buf, m_llCurReadPos, realsize);
    if (cr > 0)
    {
       m_llCurReadPos += cr;
@@ -190,7 +194,7 @@ int64_t FSClient::read(char* buf, const int64_t& size, const int64_t& prefetch)
    if (prefetch >= size)
    {
       this->prefetch(m_llCurReadPos, prefetch);
-      cr = m_pClient->m_ReadCache.read(m_strFileName, buf, m_llCurReadPos, realsize);
+      cr = m_pClient->m_Cache.read(m_strFileName, buf, m_llCurReadPos, realsize);
       if (cr > 0)
       {
          m_llCurReadPos += cr;
@@ -223,9 +227,13 @@ int64_t FSClient::read(char* buf, const int64_t& size, const int64_t& prefetch)
    return recvsize;
 }
 
-int64_t FSClient::write(const char* buf, const int64_t& size, const int64_t& buffer)
+int64_t FSClient::write(const char* buf, const int64_t& offset, const int64_t& size, const int64_t& buffer)
 {
    CGuard fg(m_FileLock);
+
+   if (offset < 0)
+      return SectorError::E_INVALID;
+   m_llCurWritePos = offset;
 
    // write command: 2
    int32_t cmd = 2;
@@ -249,10 +257,20 @@ int64_t FSClient::write(const char* buf, const int64_t& size, const int64_t& buf
          m_llSize = m_llCurWritePos;
 
       // update the file stat information in local cache, for correct stat() call
-      m_pClient->m_StatCache.update(m_strFileName, CTimer::getTime(), m_llSize);
+      m_pClient->m_Cache.update(m_strFileName, CTimer::getTime(), m_llSize);
    }
 
    return sentsize;
+}
+
+int64_t FSClient::read(char* buf, const int64_t& size)
+{
+   return read(buf, m_llCurReadPos, size);
+}
+
+int64_t FSClient::write(const char* buf, const int64_t& size)
+{
+   return write(buf, m_llCurWritePos, size);
 }
 
 int64_t FSClient::download(const char* localpath, const bool& cont)
@@ -368,11 +386,7 @@ int FSClient::close()
    //m_pClient->m_DataChn.releaseCoder();
    m_pClient->m_DataChn.remove(m_strSlaveIP, m_iSlaveDataPort);
 
-   if (m_bWrite)
-      m_pClient->m_StatCache.remove(m_strFileName);
-
-   if (m_bRead)
-      m_pClient->m_ReadCache.remove(m_strFileName);
+   m_pClient->m_Cache.remove(m_strFileName);
 
    return 0;
 }
@@ -475,6 +489,6 @@ int64_t FSClient::prefetch(const int64_t& offset, const int64_t& size)
    if (recvsize <= 0)
       return SectorError::E_CONNECTION;
 
-   m_pClient->m_ReadCache.insert(buf, m_strFileName, offset, recvsize);
+   m_pClient->m_Cache.insert(buf, m_strFileName, offset, recvsize);
    return recvsize;
 }

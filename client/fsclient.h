@@ -54,8 +54,10 @@ private:
 
 public:
    int open(const std::string& filename, int mode = SF_MODE::READ, const std::string& hint = "");
-   int64_t read(char* buf, const int64_t& size, const int64_t& prefetch = 0);
-   int64_t write(const char* buf, const int64_t& size, const int64_t& buffer = 0);
+   int64_t read(char* buf, const int64_t& offset, const int64_t& size, const int64_t& prefetch = 0);
+   int64_t write(const char* buf, const int64_t& offset, const int64_t& size, const int64_t& buffer = 0);
+   int64_t read(char* buf, const int64_t& size);
+   int64_t write(const char* buf, const int64_t& size);
    int64_t download(const char* localpath, const bool& cont = false);
    int64_t upload(const char* localpath, const bool& cont = false);
    int close();
@@ -79,8 +81,9 @@ private:
    unsigned char m_pcIV[8];
 
    std::string m_strFileName;	// Sector file name
+   int64_t m_llSize;            // file size
+   int64_t m_llTimeStamp;	// time stamp
 
-   int64_t m_llSize;		// file size
    int64_t m_llCurReadPos;	// current read position
    int64_t m_llCurWritePos;	// current write position
 

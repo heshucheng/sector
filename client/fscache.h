@@ -1,5 +1,5 @@
 /*****************************************************************************
-Copyright (c) 2005 - 2009, The Board of Trustees of the University of Illinois.
+Copyright (c) 2005 - 2010, The Board of Trustees of the University of Illinois.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 05/08/2009
+   Yunhong Gu, last updated 04/23/2010
 *****************************************************************************/
 
 #ifndef __SECTOR_FS_CACHE_H__
@@ -47,63 +47,57 @@ written by
 #include <list>
 #include <pthread.h>
 
-struct StatRec
+struct InfoBlock
 {
    int m_iCount;		// number of reference
    int m_bChange;		// if the file has been changed
    int64_t m_llTimeStamp;	// time stamp
    int64_t m_llSize;		// file size
-};
-
-class StatCache
-{
-public:
-   StatCache() {}
-   virtual ~StatCache() {}
-
-public:
-   void insert(const std::string& path);
-   void update(const std::string& path, const int64_t& ts, const int64_t& size);
-   int stat(const std::string& path, SNode& attr);
-   void remove(const std::string& path);
-
-private:
-   std::map<std::string, StatRec> m_mOpenedFiles;
-   pthread_mutex_t m_Lock;
+   int64_t m_llLastAccessTime;	// last access time
 };
 
 struct CacheBlock
 {
-   std::string m_strFileName;
-   int64_t m_llOffset;
-   int64_t m_llSize;
-   int64_t m_llCreateTime;
-   int64_t m_llLastAccessTime;
-   int m_iAccessCount;
-   char* m_pcBlock;
+   int64_t m_llOffset;                  // cache block offset
+   int64_t m_llSize;                    // cache size
+   int64_t m_llCreateTime;              // cache creation time
+   int64_t m_llLastAccessTime;          // cache last access time
+   int m_iAccessCount;                  // number of accesses
+   char* m_pcBlock;                     // cache data
 };
 
-class ReadCache
+class Cache
 {
 public:
-   ReadCache();
-   virtual ~ReadCache();
+   Cache();
+   ~Cache();
+
+   int setMaxCacheSize(const int64_t ms);
+   int setMaxCacheTime(const int64_t mt);
+
+public:
+   void update(const std::string& path, const int64_t& ts, const int64_t& size, bool first = false);
+   void remove(const std::string& path);
+
+public:
+   int stat(const std::string& path, SNode& attr);
 
 public:
    int insert(char* block, const std::string& path, const int64_t& offset, const int64_t& size);
-   int remove(const std::string& path);
-
    int read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size);
 
 private:
    int shrink();
 
 private:
+   std::map<std::string, InfoBlock> m_mOpenedFiles;
    std::map<std::string, std::list<CacheBlock> > m_mCacheBlocks;
    int64_t m_llCacheSize;
    int64_t m_llMaxCacheSize;
    int64_t m_llMaxCacheTime;
+
    pthread_mutex_t m_Lock;
 };
+
 
 #endif

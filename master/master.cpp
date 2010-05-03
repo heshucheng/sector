@@ -94,6 +94,7 @@ int Master::init()
    }
 
    m_SlaveManager.init("../conf/topology.conf");
+   m_SlaveManager.setSlaveMinDiskSpace(m_SysConfig.m_llSlaveMinDiskSpace);
    m_SlaveManager.serializeTopo(m_pcTopoData, m_iTopoDataSize);
 
    // check local directories, create them is not exist
@@ -361,16 +362,12 @@ int Master::run()
       {
          SectorMsg* r = dynamic_cast<SectorMsg*>((*res)[i]);
 
-         if (NULL != r)
-         {
-            if (r->getType() > 0)
-               m_SlaveManager.updateSlaveInfo(m_vSlaveList[i], r->getData(), r->m_iDataLength);
-            delete r;
-         }
+         if ((r->getType() > 0) && (r->m_iDataLength > 0))
+            m_SlaveManager.updateSlaveInfo(m_vSlaveList[i], r->getData(), r->m_iDataLength);
          else
-         {
             m_SlaveManager.increaseRetryCount(m_vSlaveList[i]);
-         }
+
+         delete r;
       }
 
       // check each users, remove inactive ones
@@ -1805,7 +1802,8 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       msg->setData(64, (char*)&dstport, 4);
       msg->setData(68, (char*)&transid, 4);
       msg->setData(72, (char*)&attr.m_llSize, 8);
-      msg->m_iDataLength = SectorMsg::m_iHdrSize + 80;
+      msg->setData(80, (char*)&attr.m_llSize, 8);
+      msg->m_iDataLength = SectorMsg::m_iHdrSize + 88;
 
       m_GMP.sendto(ip, port, id, msg);
 

@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 01/12/2010
+   Yunhong Gu, last updated 04/23/2010
 *****************************************************************************/
 
 
@@ -384,7 +384,7 @@ int Client::stat(const string& path, SNode& attr)
    }
 
    // check local cache: updated files may not be sent to the master yet
-   m_StatCache.stat(path, attr);
+   m_Cache.stat(path, attr);
 
    return 0;
 }
@@ -567,6 +567,11 @@ int Client::sysinfo(SysStat& sys)
    }
 
    return 0;
+}
+
+int Client::setMaxCacheSize(const int64_t ms)
+{
+   return m_Cache.setMaxCacheSize(ms);
 }
 
 int Client::updateMasters()
