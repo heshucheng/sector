@@ -1300,7 +1300,7 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       }
       else
       {
-         char buf[128];
+         char buf[4096];
          attr.serialize(buf);
          msg->setData(0, buf, strlen(buf) + 1);
 
@@ -1668,6 +1668,53 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
          newmsg.setData(0, (char*)&newts, 8);
          newmsg.setData(8, path.c_str(), path.length() + 1);
          sync(newmsg.getData(), newmsg.m_iDataLength, 1107);
+      }
+
+      msg->m_iDataLength = SectorMsg::m_iHdrSize;
+      m_GMP.sendto(ip, port, id, msg);
+      break;
+   }
+
+   case 108: // settype
+   {
+      if (!m_Routing.match(msg->getData(), m_iRouterKey))
+      {
+         reject(ip, port, id, SectorError::E_MASTER);
+         break;
+      }
+
+      int rwx = SF_MODE::WRITE;
+      if (!user->match(msg->getData(), rwx))
+      {
+         reject(ip, port, id, SectorError::E_PERMISSION);
+         break;
+      }
+
+      SNode attr;
+      if (m_pMetadata->lookup(msg->getData(), attr) < 0)
+      {
+         reject(ip, port, id, SectorError::E_NOEXIST);
+         break;
+      }
+
+      for (set<Address, AddrComp>::iterator i = attr.m_sLocation.begin(); i != attr.m_sLocation.end(); ++ i)
+      {
+         int msgid = 0;
+         m_GMP.sendto(i->m_strIP.c_str(), i->m_iPort, msgid, msg);
+      }
+
+      string path = msg->getData();
+      string newtype = msg->getData() + strlen(msg->getData()) + 1;
+
+      m_pMetadata->settype(path, newtype);
+
+      // send file changes to all other masters
+      if (m_Routing.getNumOfMasters() > 1)
+      {
+         SectorMsg newmsg;
+         newmsg.setData(0, path.c_str(), path.length() + 1);
+         newmsg.setData(path.length() + 1, newtype.c_str(), newtype.length() + 1);
+         sync(newmsg.getData(), newmsg.m_iDataLength, 1108);
       }
 
       msg->m_iDataLength = SectorMsg::m_iHdrSize;
@@ -2129,6 +2176,14 @@ int Master::processSyncCmd(const string& ip, const int port,  const User* user, 
    case 1107: // utime
    {
       m_pMetadata->utime(msg->getData() + 8, *(int64_t*)msg->getData());
+      msg->m_iDataLength = SectorMsg::m_iHdrSize + 4;
+      m_GMP.sendto(ip, port, id, msg);
+      break;
+   }
+
+   case 1108: // settype
+   {
+      m_pMetadata->settype(msg->getData(), msg->getData() + strlen(msg->getData()) + 1);
       msg->m_iDataLength = SectorMsg::m_iHdrSize + 4;
       m_GMP.sendto(ip, port, id, msg);
       break;

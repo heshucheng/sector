@@ -55,7 +55,8 @@ m_strName(""),
 m_bIsDir(false),
 m_llTimeStamp(0),
 m_llSize(0),
-m_strChecksum("")
+m_strChecksum(""),
+m_type("")
 {
    m_sLocation.clear();
    m_mDirectory.clear();
@@ -65,8 +66,17 @@ SNode::~SNode()
 {
 }
 
+static inline char *scpy(char *d, const char *s) {
+  while (*s) *d++ = *s++;
+  return d;
+}
+
 int SNode::serialize(char* buf)
 {
+   if (m_type != "")
+       buf = scpy(buf, m_type.c_str());
+   *buf++ = 3; // EOX
+
    int namelen = m_strName.length();
    sprintf(buf, "%d,%s,%d,%lld,%lld", namelen, m_strName.c_str(), m_bIsDir, (long long int)m_llTimeStamp, (long long int)m_llSize);
    char* p = buf + strlen(buf);
@@ -82,15 +92,21 @@ int SNode::deserialize(const char* buf)
 {
    char buffer[4096];
    char* tmp = buffer;
-
    bool stop = true;
+   size_t total_len = strlen(buf), l = total_len;
+
+   strcpy(tmp, buf);
+
+   // type
+   tmp = strchr(tmp, 3);
+   *tmp = 0;
+   m_type = buffer;
+   tmp++;
+   l = total_len - (tmp - buffer);
 
    // file name
-   strcpy(tmp, buf);
-   for (unsigned int i = 0; i < strlen(tmp); ++ i)
-   {
-      if (tmp[i] == ',')
-      {
+   for (unsigned int i = 0; i < l; ++ i) {
+      if (tmp[i] == ',') {
          stop = false;
          tmp[i] = '\0';
          break;
@@ -102,7 +118,8 @@ int SNode::deserialize(const char* buf)
       return -1;
 
    tmp = tmp + strlen(tmp) + 1;
-   if (strlen(tmp) < namelen)
+   l = total_len - (tmp - buffer);
+   if (l < namelen)
       return -1;
    tmp[namelen] = '\0';
    m_strName = tmp;
@@ -111,10 +128,9 @@ int SNode::deserialize(const char* buf)
 
    // restore dir 
    tmp = tmp + strlen(tmp) + 1;
-   for (unsigned int i = 0; i < strlen(tmp); ++ i)
-   {
-      if (tmp[i] == ',')
-      {
+   l = total_len - (tmp - buffer);
+   for (unsigned int i = 0; i < l; ++ i) {
+      if (tmp[i] == ',') {
          stop = false;
          tmp[i] = '\0';
          break;
@@ -128,10 +144,9 @@ int SNode::deserialize(const char* buf)
 
    // restore timestamp
    tmp = tmp + strlen(tmp) + 1;
-   for (unsigned int i = 0; i < strlen(tmp); ++ i)
-   {
-      if (tmp[i] == ',')
-      {
+   l = total_len - (tmp - buffer);
+   for (unsigned int i = 0; i < l; ++ i) {
+      if (tmp[i] == ',') {
          stop = false;
          tmp[i] = '\0';
          break;
@@ -145,10 +160,9 @@ int SNode::deserialize(const char* buf)
 
    // restore size
    tmp = tmp + strlen(tmp) + 1;
-   for (unsigned int i = 0; i < strlen(tmp); ++ i)
-   {
-      if (tmp[i] == ',')
-      {
+   l = total_len - (tmp - buffer);
+   for (unsigned int i = 0; i < l; ++ i) {
+      if (tmp[i] == ',') {
          stop = false;
          tmp[i] = '\0';
          break;
@@ -157,17 +171,15 @@ int SNode::deserialize(const char* buf)
    m_llSize = atoll(tmp);
 
    // restore locations
-   while (!stop)
-   {
+   while (!stop) {
       tmp = tmp + strlen(tmp) + 1;
+      l = total_len - (tmp - buffer);
 
       stop = true;
 
       Address addr;
-      for (unsigned int i = 0; i < strlen(tmp); ++ i)
-      {
-         if (tmp[i] == ',')
-         {
+      for (unsigned int i = 0; i < l; ++ i) {
+         if (tmp[i] == ',') {
             stop = false;
             tmp[i] = '\0';
             break;
@@ -180,10 +192,9 @@ int SNode::deserialize(const char* buf)
       stop = true;
 
       tmp = tmp + strlen(tmp) + 1;
-      for (unsigned int i = 0; i < strlen(tmp); ++ i)
-      {
-         if (tmp[i] == ',')
-         {
+      l = total_len - (tmp - buffer);
+      for (unsigned int i = 0; i < l; ++ i) {
+         if (tmp[i] == ',') {
             stop = false;
             tmp[i] = '\0';
             break;

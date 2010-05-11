@@ -48,6 +48,7 @@ written by
 #include <unistd.h>
 #include <sys/times.h>
 #include <utime.h>
+#include <attr/xattr.h>
 #include "common.h"
 
 using namespace std;
@@ -426,6 +427,15 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
       break;
    }
 
+   case 108: // settype
+   {
+      char* path = msg->getData();
+      char *newtype = msg->getData() + strlen(msg->getData()) + 1;
+      if (setxattr((m_strHomeDir + path).c_str(), "user.vz.type", newtype, strlen(newtype)+1, 0) < 0)
+        perror("setxattr");
+      break;
+   }
+
    case 110: // open file
    {
      //cout << "===> start file server " << ip << " " << port << endl;
@@ -648,8 +658,11 @@ int Slave::report(const string& master_ip, const int& master_port, const int32_t
       sn.m_bIsDir = 0;
       sn.m_llTimeStamp = s.st_mtime;
       sn.m_llSize = s.st_size;
+      char typebuf[4096] = ""; 
+      getxattr((m_strHomeDir + *i).c_str(), "user.vz.type", typebuf, 4096);
+      sn.m_type = typebuf;
 
-      char buf[1024];
+      char buf[4096];
       sn.serialize(buf);
 
       //update local
@@ -710,7 +723,7 @@ int Slave::reportMO(const std::string& master_ip, const int& master_port, const 
          sn.m_llTimeStamp = i->m_llCreationTime;
          sn.m_llSize = 8;
 
-         char buf[1024];
+         char buf[4096];
          sn.serialize(buf);
          serlist.push_back(buf);
       }

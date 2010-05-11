@@ -78,6 +78,7 @@ public:
    int64_t m_llTimeStamp;
    int64_t m_llSize;
    std::string m_strChecksum;
+   std::string m_type;
 
 public:
    int serialize(char* buf);
@@ -144,6 +145,7 @@ public:
    int rmr(const std::string& path);
    int copy(const std::string& src, const std::string& dst);
    int utime(const std::string& path, const int64_t& ts);
+   int settype(const std::string& path, const std::string& newtype);
 
    int sysinfo(SysStat& sys);
 
