@@ -273,7 +273,7 @@ private:
    int sendResultToBuckets(const int& speid, const int& buckets, const SPEResult& result, const SPEDestination& dest);
    int sendResultToClient(const int& buckets, const int* sarray, const int* rarray, const SPEResult& result, const std::string& clientip, int clientport, int session);
 
-   int acceptLibrary(const int& key, const std::string& ip, int port, int session);
+   int acceptLibrary(const int& key, const std::string& ip, int port, int session, std::string &lib);
    int openLibrary(const int& key, const std::string& lib, void*& lh);
    int getSphereFunc(void* lh, const std::string& function, SPHERE_PROCESS& process);
    int getMapFunc(void* lh, const std::string& function, MR_MAP& map, MR_PARTITION& partition);

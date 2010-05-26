@@ -207,6 +207,7 @@ void* Slave::SPEHandler(void* p)
    delete (Param4*)p;
 
    SectorMsg msg;
+   string lib;
 
    // cout << "rendezvous connect " << ip << " " << dataport << endl;
    if (self->m_DataChn.connect(ip, dataport) < 0)
@@ -244,12 +245,12 @@ void* Slave::SPEHandler(void* p)
 
 
    // initialize processing function
-   self->acceptLibrary(key, ip, dataport, transid);
+   self->acceptLibrary(key, ip, dataport, transid, lib);
    SPHERE_PROCESS process = NULL;
    MR_MAP map = NULL;
    MR_PARTITION partition = NULL;
    void* lh = NULL;
-   self->openLibrary(key, function, lh);
+   self->openLibrary(key, lib, lh);
    if (NULL == lh)
    {
       self->logError(3, ip, ctrlport, function);
@@ -262,7 +263,6 @@ void* Slave::SPEHandler(void* p)
       self->getMapFunc(lh, function, map, partition);
    else
       return NULL;
-
 
    timeval t1, t2, t3, t4;
    gettimeofday(&t1, 0);
@@ -348,6 +348,7 @@ void* Slave::SPEHandler(void* p)
       int deliverystatus = 0;
       int processstatus = 0;
 
+      unitrows = totalrows; // just give me the whole damn thing
       // process data segments
       for (int i = 0; i < totalrows; i += unitrows)
       {
@@ -808,8 +809,7 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
       idx.read((char*)index, (totalrows + 1) * 8);
       idx.close();
    }
-   else
-   {
+   else if (size) {
       SectorMsg msg;
       msg.setType(110); // open the index file
       msg.setKey(0);
@@ -866,9 +866,15 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
 
       // update total received data
       m_SlaveStat.updateIO(srcip, (totalrows + 1) * 8, 0);
+   } else {
+     // no index, so rows are bytes
+     size = totalrows;
+     index[0] = 0;
+     goto Lreaddata;
    }
 
    size = index[totalrows] - index[0];
+Lreaddata:
    block = new char[size];
 
    // read data file
@@ -1077,7 +1083,7 @@ int Slave::sendResultToBuckets(const int& speid, const int& buckets, const SPERe
    return 1;
 }
 
-int Slave::acceptLibrary(const int& key, const string& ip, int port, int session)
+int Slave::acceptLibrary(const int& key, const string& ip, int port, int session, string &libname)
 {
    int32_t num = -1;
    m_DataChn.recv4(ip, port, session, num);
@@ -1087,6 +1093,8 @@ int Slave::acceptLibrary(const int& key, const string& ip, int port, int session
       char* lib = NULL;
       int size = 0;
       m_DataChn.recv(ip, port, session, lib, size);
+      libname = lib;
+      
       char* buf = NULL;
       m_DataChn.recv(ip, port, session, buf, size);
 
@@ -1118,7 +1126,7 @@ int Slave::openLibrary(const int& key, const string& lib, void*& lh)
 {
    char path[64];
    sprintf(path, "%d", key);
-   lh = dlopen((m_strHomeDir + ".sphere/" + path + "/" + lib + ".so").c_str(), RTLD_LAZY | RTLD_DEEPBIND);
+   lh = dlopen((m_strHomeDir + ".sphere/" + path + "/" + lib).c_str(), RTLD_LAZY | RTLD_DEEPBIND);
    if (NULL == lh)
    {
       // if no user uploaded lib, check permanent lib

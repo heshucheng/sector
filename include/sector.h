@@ -264,8 +264,8 @@ public:
    int m_iIndexLen;             // result data index length
 
    std::string m_strOrigFile;   // original input file
-   int64_t m_llOrigStartRec;    // first record of the original input file
-   int64_t m_llOrigEndRec;      // last record of the original input file
+  //int64_t m_llOrigStartRec;    // first record of the original input file
+  //int64_t m_llOrigEndRec;      // last record of the original input file
 };
 
 class SphereProcess
