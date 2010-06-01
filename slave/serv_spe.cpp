@@ -286,7 +286,10 @@ void* Slave::SPEHandler(void* p)
       int64_t totalrows = *(int64_t*)(dataseg + 8);
       int32_t dsid = *(int32_t*)(dataseg + 16);
       string datafile = dataseg + 20;
-      sprintf(dest.m_pcLocalFileID, ".%d", dsid);
+      if (buckets != -1)
+        sprintf(dest.m_pcLocalFileID, ".%d", dsid);
+      else
+        *dest.m_pcLocalFileID = 0; // FIXME HACK JP
       delete [] dataseg;
       // cout << "new job " << datafile << " " << offset << " " << totalrows << endl;
 
