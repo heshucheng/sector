@@ -1264,7 +1264,7 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       {
          msg->setData(size, i->c_str(), i->length());
          size += i->length();
-         msg->setData(size, ";", 1);
+         msg->setData(size, "\02", 1);
          size += 1;
       }
       msg->setData(size, "\0", 1);

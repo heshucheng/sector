@@ -340,7 +340,7 @@ int Client::list(const string& path, vector<SNode>& attr)
    unsigned int s = 0;
    while (s < filelist.length())
    {
-      int t = filelist.find(';', s);
+      int t = filelist.find('\02', s);
       SNode sn;
       sn.deserialize(filelist.substr(s, t - s).c_str());
       attr.insert(attr.end(), sn);
