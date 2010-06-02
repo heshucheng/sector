@@ -269,7 +269,7 @@ private:
 
 private:
    int SPEReadData(const std::string& datafile, const int64_t& offset, int& size, int64_t* index, const int64_t& totalrows, char*& block);
-   int sendResultToFile(const SPEResult& result, const std::string& localfile, const int64_t& offset);
+  int sendResultToFile(const SPEResult& result, const std::string& localfile, const int64_t& offset, SFile &file);
    int sendResultToBuckets(const int& speid, const int& buckets, const SPEResult& result, const SPEDestination& dest);
    int sendResultToClient(const int& buckets, const int* sarray, const int* rarray, const SPEResult& result, const std::string& clientip, int clientport, int session);
 
@@ -284,7 +284,7 @@ private:
    int reduce(std::vector<MRRecord>& vr, const std::string& bucket, MR_REDUCE red, void* param, int psize);
 
    int processData(SInput& input, SOutput& output, SFile& file, SPEResult& result, int buckets, SPHERE_PROCESS process, MR_MAP map, MR_PARTITION partition);
-   int deliverResult(const int& buckets, const int& speid, SPEResult& result, SPEDestination& dest);
+  int deliverResult(const int& buckets, const int& speid, SPEResult& result, SPEDestination& dest, SFile &file);
 
 private:
    int createDir(const std::string& path);
