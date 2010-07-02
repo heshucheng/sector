@@ -90,7 +90,7 @@ public:	// update operations
 
    virtual int update(const std::string& fileinfo, const Address& addr, const int& type) = 0;
    virtual int utime(const std::string& path, const int64_t& ts) = 0;
-   virtual int settype(const std::string& path, const std::string& newtype);
+   virtual int settype(const std::string& path, const std::string& newtype) = 0;
 
 public:	// lock/unlock
    virtual int lock(const std::string& path, int user, int mode);

@@ -48,7 +48,7 @@ written by
 #include <unistd.h>
 #include <sys/times.h>
 #include <utime.h>
-#include <attr/xattr.h>
+#include <sys/xattr.h>
 #include "common.h"
 
 using namespace std;
@@ -404,7 +404,7 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
    {
       char* path = msg->getData();
       m_pLocalFile->remove(path, true);
-      string sysrm = string("rm -rf ") + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path);
+      string sysrm = string("rm -rf ") + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path) + " " + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path) + ".idx";
       system(sysrm.c_str());
 
       char* tmp = new char[64 + strlen(path)];

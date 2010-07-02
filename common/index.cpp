@@ -50,7 +50,7 @@ written by
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstring>
-#include <attr/xattr.h>
+#include <sys/xattr.h>
 
 using namespace std;
 

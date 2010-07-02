@@ -4,7 +4,7 @@ DEBUG = 1
 STATIC = 1
 
 CCFLAGS = -I. -I../include
-LDFLAGS = -lstdc++ -lpthread -lssl -L.
+LDFLAGS = -lstdc++ -lpthread -lssl -lcrypto -L. -ldl
 
 ifeq ($(DEBUG), 1)
    CCFLAGS += -Wall -g -DDEBUG=1
