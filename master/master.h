@@ -78,6 +78,8 @@ public:
    int stop();
 
  private:
+   static void* utility(void* s);
+
    ThreadJobQueue m_ServiceJobQueue;			// job queue for service thread pool
    struct ServiceJobParam
    {
@@ -132,6 +134,7 @@ public:
  private:
    CGMP m_GMP;						// GMP messenger
 
+   std::string m_strSectorHome;				// $SECTOR_HOME directory, for code and configuration file location
    MasterConf m_SysConfig;				// master configuration
    std::string m_strHomeDir;				// home data directory, for system metadata
 

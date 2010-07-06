@@ -45,7 +45,9 @@ written by
 #include <string>
 #include <map>
 #include <list>
-#include <pthread.h>
+#ifndef WIN32
+   #include <pthread.h>
+#endif
 
 struct InfoBlock
 {
@@ -84,7 +86,7 @@ public:
 
 public:
    int insert(char* block, const std::string& path, const int64_t& offset, const int64_t& size);
-   int read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size);
+   int64_t read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size);
 
 private:
    int shrink();

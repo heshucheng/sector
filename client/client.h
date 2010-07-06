@@ -43,13 +43,13 @@ written by
 #define __SECTOR_CLIENT_H__
 
 #include <gmp.h>
-#include <index.h>
-#include <topology.h>
-#include <pthread.h>
 #include <datachn.h>
 #include <routing.h>
 #include <sector.h>
 #include "fscache.h"
+#ifndef WIN32
+   #include <pthread.h>
+#endif
 
 class FSClient;
 class DCClient;
@@ -94,8 +94,10 @@ public:
 
 protected:
    int updateMasters();
-
+   int lookup(const std::string& path, Address& serv_addr);
+   int lookup(const int32_t& key, Address& serv_addr);
    int deserializeSysStat(SysStat& sys, char* buf, int size);
+   int retrieveMasterInfo(std::string& certfile);
 
 protected:
    std::string m_strUsername;           // user account name
@@ -103,6 +105,7 @@ protected:
    std::string m_strCert;               // master certificate
 
    std::set<Address, AddrComp> m_sMasters;      // masters
+   pthread_mutex_t m_MasterSetLock;
 
    Routing m_Routing;                   // master routing module
 
@@ -133,7 +136,11 @@ protected: // the following are used for keeping alive with the masters
    pthread_t m_KeepAlive;
    pthread_cond_t m_KACond;
    pthread_mutex_t m_KALock;
+#ifndef WIN32
    static void* keepAlive(void*);
+#else
+   static DWORD WINAPI keepAlive(LPVOID);
+#endif
 
 protected:
    pthread_mutex_t m_IDLock;

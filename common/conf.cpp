@@ -38,13 +38,17 @@ written by
    Yunhong Gu, last updated 04/22/2009
 *****************************************************************************/
 
-
+#ifndef WIN32
+   #include <sys/socket.h>
+   #include <arpa/inet.h>
+   #include <unistd.h>
+#endif
 #include "conf.h"
 #include <iostream>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <cstring>
 #include <cstdlib>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -229,7 +233,11 @@ int MasterConf::init(const string& path)
             m_MetaType = DISK;
       }
       else if ("SLAVE_MIN_DISK_SPACE" == param.m_strName)
+#ifndef WIN32
          m_llSlaveMinDiskSpace = atoll(param.m_vstrValue[0].c_str()) * 1000000;
+#else
+         m_llSlaveMinDiskSpace = _atoi64(param.m_vstrValue[0].c_str()) * 1000000;
+#endif
       else if ("LOG_LEVEL" == param.m_strName)
          m_iLogLevel = atoi(param.m_vstrValue[0].c_str());
       else
@@ -284,7 +292,11 @@ int SlaveConf::init(const string& path)
             m_strHomeDir += "/";
       }
       else if ("MAX_DATA_SIZE" == param.m_strName)
+#ifndef WIN32
          m_llMaxDataSize = atoll(param.m_vstrValue[0].c_str()) * 1024 * 1024;
+#else
+         m_llMaxDataSize = _atoi64(param.m_vstrValue[0].c_str()) * 1024 * 1024;
+#endif
       else if ("MAX_SERVICE_INSTANCE" == param.m_strName)
          m_iMaxServiceNum = atoi(param.m_vstrValue[0].c_str());
       else if ("LOCAL_ADDRESS" == param.m_strName)
@@ -358,7 +370,11 @@ int ClientConf::init(const string& path)
       }
       else if ("MAX_CACHE_SIZE" == param.m_strName)
       {
+#ifndef WIN32
          m_llMaxCacheSize = atoll(param.m_vstrValue[0].c_str()) * 1000000;
+#else
+         m_llMaxCacheSize = _atoi64(param.m_vstrValue[0].c_str()) * 1000000;
+#endif
       }
       else if ("FUSE_READ_AHEAD_BLOCK" == param.m_strName)
       {
@@ -429,9 +445,26 @@ bool WildCard::match(const string& card, const string& path)
 }
 
 
-int Session::loadInfo(const string& conf)
+int Session::loadInfo(const char* conf)
 {
-   m_ClientConf.init(conf);
+   string conf_file_path;
+
+   char* system_env = getenv("SECTOR_HOME");
+
+   struct stat t;
+   if ((NULL == conf) || (0 == strlen(conf)) || (stat(conf, &t) < 0))
+   {
+      if (NULL != system_env)
+         conf_file_path = string(system_env) + "/conf/client.conf";
+      else
+         conf_file_path = "../conf/client.conf";
+   }
+   else
+   {
+      conf_file_path = conf;
+   }
+
+   m_ClientConf.init(conf_file_path);
 
    if (m_ClientConf.m_strMasterIP == "")
    {
@@ -466,13 +499,23 @@ int Session::loadInfo(const string& conf)
       cin >> m_ClientConf.m_strPassword;
    }
 
-   if (m_ClientConf.m_strCertificate == "")
+   if (stat(m_ClientConf.m_strCertificate.c_str(), &t) < 0)
    {
-      cout << "please specify the location of the master certificate: ";
-      cin >> m_ClientConf.m_strCertificate;
+      if (NULL != system_env)
+      {
+         if (stat((string(system_env) + "/conf/master_node.cert").c_str(), &t) == 0)
+            m_ClientConf.m_strCertificate = string(system_env) + "/conf/master_node.cert";
+      }
+      else if (stat("../conf/master_node.cert", &t) == 0)
+      {
+         m_ClientConf.m_strCertificate = "../conf/master_node.cert";
+      }
+      else
+      {
+         m_ClientConf.m_strCertificate = "";
+         cout << "WARNING: couldn't locate the master certificate, will try to download one from the master node.\n";
+      }
    }
-
-   //TODO: if m_strCert is relative dir, use getcwd to change it into absolute dir
 
    return 1;
 }

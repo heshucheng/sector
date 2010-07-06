@@ -35,13 +35,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 04/23/2010
+   Yunhong Gu, last updated 07/05/2010
 *****************************************************************************/
 
-
+#ifndef WIN32
+   #include <netdb.h>
+#else
+   #include <winsock2.h>
+   #include <ws2tcpip.h>
+#endif
 #include <ssltransport.h>
-#include <netdb.h>
+#include <tcptransport.h>
 #include <crypto.h>
+#include <common.h>
 #include "client.h"
 #include <iostream>
 
@@ -58,16 +64,32 @@ m_iCount(0),
 m_bActive(false),
 m_iID(0)
 {
+#ifndef WIN32
+   pthread_mutex_init(&m_MasterSetLock, NULL);
    pthread_mutex_init(&m_KALock, NULL);
    pthread_cond_init(&m_KACond, NULL);
    pthread_mutex_init(&m_IDLock, NULL);
+#else
+   m_MasterSetLock = CreateMutex(NULL, false, NULL);
+   m_KALock = CreateMutex(NULL, false, NULL);
+   m_KACond = CreateEvent(NULL, false, false, NULL);
+   m_IDLock = CreateMutex(NULL, false, NULL);
+#endif
 }
 
 Client::~Client()
 {
+#ifndef WIN32
+   pthread_mutex_destroy(&m_MasterSetLock);
    pthread_mutex_destroy(&m_KALock);
    pthread_cond_destroy(&m_KACond);
    pthread_mutex_destroy(&m_IDLock);
+#else
+   CloseHandle(m_MasterSetLock);
+   CloseHandle(m_KALock);
+   CloseHandle(m_KACond);
+   CloseHandle(m_IDLock);
+#endif
 }
 
 int Client::init(const string& server, const int& port)
@@ -75,17 +97,33 @@ int Client::init(const string& server, const int& port)
    if (m_iCount ++ > 0)
       return 0;
 
+#ifdef WIN32
+    WSADATA wsaData = {0};
+    int iResult = 0;
+    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0) 
+    {
+        printf("WSAStartup failed: %d\n", iResult);
+        return 1;
+    }
+#endif
+
    m_ErrorInfo.init();
 
-   struct hostent* serverip = gethostbyname(server.c_str());
-   if (NULL == serverip)
+   struct addrinfo* result;
+   if (getaddrinfo(server.c_str(), NULL, NULL, &result) != 0)
    {
-      // cerr << "incorrect host name.\n";
+      cerr << "incorrect host name.\n";
       return -1;
    }
+
    m_strServerHost = server;
-   char buf[64];
-   m_strServerIP = inet_ntop(AF_INET, serverip->h_addr_list[0], buf, 64);
+
+   char hostip[NI_MAXHOST];
+   getnameinfo((sockaddr *)result->ai_addr, result->ai_addrlen, hostip, sizeof(hostip), NULL, 0, NI_NUMERICHOST);
+   m_strServerIP = hostip;
+   freeaddrinfo(result);
+
    m_iServerPort = port;
 
    Crypto::generateKey(m_pcCryptoKey, m_pcCryptoIV);
@@ -93,55 +131,50 @@ int Client::init(const string& server, const int& port)
    Transport::initialize();
    if (m_GMP.init(0) < 0)
    {
-      // cerr << "unable to init GMP.\n ";
+      cerr << "unable to init GMP.\n ";
       return -1;
    }
 
    int dataport = 0;
    if (m_DataChn.init("", dataport) < 0)
    {
-      // cerr << "unable to init data channel.\n";
+      cerr << "unable to init data channel.\n";
       return -1;
    }
 
    m_bActive = true;
+#ifndef WIN32
    pthread_create(&m_KeepAlive, NULL, keepAlive, this);
+#else
+   m_KeepAlive = CreateThread(NULL, 0, keepAlive, this, 0, NULL);
+#endif
 
    return 0;
 }
 
-int Client::login(const string& username, const string& password, 
-                  const char* cert, int default_asn1_cert_len, 
-                  const unsigned char *default_asn1_cert)
+int Client::login(const string& username, const string& password, const char* cert)
 {
    if (m_iKey > 0)
       return m_iKey;
 
-   SSLTransport::init();
-
    string master_cert;
-   if (cert != NULL)
+   if ((cert != NULL) && (0 != strlen(cert)))
       master_cert = cert;
-   else
-      master_cert = "master_node.cert";
+   else if (retrieveMasterInfo(master_cert) < 0)
+      return -1;
+
+   SSLTransport::init();
 
    int result;
    SSLTransport secconn;
-
-   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0) {
-     if (default_asn1_cert) {
-       if ((result = secconn.initClientCTX_ASN1(default_asn1_cert_len, default_asn1_cert)) < 0)
+   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0)
          return result;
-     } else
-       return result;
-   }
-     
    if ((result = secconn.open(NULL, 0)) < 0)
       return result;
 
    if ((result = secconn.connect(m_strServerHost.c_str(), m_iServerPort)) < 0)
    {
-      // cerr << "cannot set up secure connection to the master.\n";
+      cerr << "cannot set up secure connection to the master.\n";
       return result;
    }
 
@@ -184,7 +217,10 @@ int Client::login(const string& username, const string& password,
    addr.m_strIP = m_strServerIP;
    addr.m_iPort = m_iServerPort;
    m_Routing.insert(key, addr);
+
+   CGuard::enterCS(m_MasterSetLock);
    m_sMasters.insert(addr);
+   CGuard::leaveCS(m_MasterSetLock);
 
    int num;
    secconn.recv((char*)&num, 4);
@@ -218,8 +254,14 @@ int Client::login(const string& serv_ip, const int& serv_port)
    Address addr;
    addr.m_strIP = serv_ip;
    addr.m_iPort = serv_port;
+
+   CGuard::enterCS(m_MasterSetLock);
    if (m_sMasters.find(addr) != m_sMasters.end())
+   {
+      CGuard::leaveCS(m_MasterSetLock);
       return 0;
+   }
+   CGuard::leaveCS(m_MasterSetLock);
 
    if (m_iKey < 0)
       return -1;
@@ -235,7 +277,7 @@ int Client::login(const string& serv_ip, const int& serv_port)
 
    if ((result = secconn.connect(serv_ip.c_str(), serv_port)) < 0)
    {
-      // cerr << "cannot set up secure connection to the master.\n";
+      cerr << "cannot set up secure connection to the master.\n";
       return result;
    }
 
@@ -270,13 +312,16 @@ int Client::login(const string& serv_ip, const int& serv_port)
    secconn.close();
    SSLTransport::destroy();
 
+   CGuard::enterCS(m_MasterSetLock);
    m_sMasters.insert(addr);
+   CGuard::leaveCS(m_MasterSetLock);
 
    return 0;
 }
 
 int Client::logout()
 {
+   CGuard::enterCS(m_MasterSetLock);
    for (set<Address, AddrComp>::iterator i = m_sMasters.begin(); i != m_sMasters.end(); ++ i)
    {
       SectorMsg msg;
@@ -285,8 +330,8 @@ int Client::logout()
       msg.m_iDataLength = SectorMsg::m_iHdrSize;
       m_GMP.rpc(i->m_strIP.c_str(), i->m_iPort, &msg, &msg);
    }
-
    m_sMasters.clear();
+   CGuard::leaveCS(m_MasterSetLock);
 
    m_iKey = 0;
    return 0;
@@ -299,17 +344,27 @@ int Client::close()
       if (m_iKey > 0)
          logout();
 
+#ifndef WIN32
       pthread_mutex_lock(&m_KALock);
       m_bActive = false;
       pthread_cond_signal(&m_KACond);
       pthread_mutex_unlock(&m_KALock);
       pthread_join(m_KeepAlive, NULL);
+#else
+      m_bActive = false;
+      SetEvent(m_KACond);
+      WaitForSingleObject(m_KeepAlive, INFINITE);
+#endif
 
       m_strServerHost = "";
       m_strServerIP = "";
       m_iServerPort = 0;
       m_GMP.close();
       Transport::release();
+
+#ifdef WIN32
+      WSACleanup();
+#endif
    }
 
    return 0;
@@ -326,8 +381,8 @@ int Client::list(const string& path, vector<SNode>& attr)
    msg.setData(0, revised_path.c_str(), revised_path.length() + 1);
 
    Address serv;
-   m_Routing.lookup(revised_path, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(revised_path, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -361,8 +416,8 @@ int Client::stat(const string& path, SNode& attr)
    msg.setData(0, revised_path.c_str(), revised_path.length() + 1);
 
    Address serv;
-   m_Routing.lookup(revised_path, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(revised_path, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -399,8 +454,8 @@ int Client::mkdir(const string& path)
    msg.setData(0, revised_path.c_str(), revised_path.length() + 1);
 
    Address serv;
-   m_Routing.lookup(revised_path, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(revised_path, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -428,8 +483,8 @@ int Client::move(const string& oldpath, const string& newpath)
    msg.setData(4 + src.length() + 1 + 4, dst.c_str(), dst.length() + 1);
 
    Address serv;
-   m_Routing.lookup(src, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(src, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -450,8 +505,8 @@ int Client::remove(const string& path)
    msg.setData(0, revised_path.c_str(), revised_path.length() + 1);
 
    Address serv;
-   m_Routing.lookup(revised_path, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(revised_path, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -503,8 +558,8 @@ int Client::copy(const string& src, const string& dst)
    msg.setData(4 + rsrc.length() + 1 + 4, rdst.c_str(), rdst.length() + 1);
 
    Address serv;
-   m_Routing.lookup(rsrc, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(rsrc, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -526,8 +581,8 @@ int Client::utime(const string& path, const int64_t& ts)
    msg.setData(revised_path.length() + 1, (char*)&ts, 8);
 
    Address serv;
-   m_Routing.lookup(revised_path, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(revised_path, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -546,8 +601,8 @@ int Client::sysinfo(SysStat& sys)
    msg.m_iDataLength = SectorMsg::m_iHdrSize;
 
    Address serv;
-   m_Routing.lookup(m_iKey, serv);
-   login(serv.m_strIP, serv.m_iPort);
+   if (lookup(m_iKey, serv) < 0)
+      return SectorError::E_CONNECTION;
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
@@ -616,12 +671,17 @@ int Client::updateMasters()
    return -1;
 }
 
+#ifndef WIN32
 void* Client::keepAlive(void* param)
+#else
+DWORD WINAPI Client::keepAlive(LPVOID param)
+#endif
 {
    Client* self = (Client*)param;
 
    while (self->m_bActive)
    {
+#ifndef WIN32
       timeval t;
       gettimeofday(&t, NULL);
       timespec ts;
@@ -631,13 +691,20 @@ void* Client::keepAlive(void* param)
       pthread_mutex_lock(&self->m_KALock);
       pthread_cond_timedwait(&self->m_KACond, &self->m_KALock, &ts);
       pthread_mutex_unlock(&self->m_KALock);
+#else
+      WaitForSingleObject(self->m_KACond, 600000);
+#endif
 
       if (!self->m_bActive)
-      {
          break;
-      }
 
+      vector<Address> ml;
+	  CGuard::enterCS(self->m_MasterSetLock);
       for (set<Address, AddrComp>::iterator i = self->m_sMasters.begin(); i != self->m_sMasters.end(); ++ i)
+         ml.push_back(*i);
+	  CGuard::leaveCS(self->m_MasterSetLock);
+
+      for (vector<Address>::iterator i = ml.begin(); i != ml.end(); ++ i)
       {
          // send keep-alive msg to each logged in master
          SectorMsg msg;
@@ -648,7 +715,11 @@ void* Client::keepAlive(void* param)
       }
    }
 
+#ifndef WIN32
    return NULL;
+#else
+   return 0;
+#endif
 }
 
 int Client::deserializeSysStat(SysStat& sys, char* buf, int size)
@@ -668,14 +739,14 @@ int Client::deserializeSysStat(SysStat& sys, char* buf, int size)
    p += 4;
    for (vector<SysStat::ClusterStat>::iterator i = sys.m_vCluster.begin(); i != sys.m_vCluster.end(); ++ i)
    {
-      i->m_iClusterID = *(int64_t*)p;
-      i->m_iTotalNodes = *(int64_t*)(p + 8);
-      i->m_llAvailDiskSpace = *(int64_t*)(p + 16);
-      i->m_llTotalFileSize = *(int64_t*)(p + 24);
-      i->m_llTotalInputData = *(int64_t*)(p + 32);
-      i->m_llTotalOutputData = *(int64_t*)(p + 40);
+      i->m_iClusterID = *(int32_t*)p;
+      i->m_iTotalNodes = *(int32_t*)(p + 4);
+      i->m_llAvailDiskSpace = *(int64_t*)(p + 8);
+      i->m_llTotalFileSize = *(int64_t*)(p + 16);
+      i->m_llTotalInputData = *(int64_t*)(p + 24);
+      i->m_llTotalOutputData = *(int64_t*)(p + 32);
 
-      p += 48;
+      p += 40;
    }
 
    int m = *(int32_t*)p;
@@ -705,6 +776,65 @@ int Client::deserializeSysStat(SysStat& sys, char* buf, int size)
 
       p += 72;
    }
+
+   return 0;
+}
+
+int Client::lookup(const string& path, Address& serv_addr)
+{
+   if (m_Routing.lookup(path, serv_addr) < 0)
+      return -1;
+
+   if (login(serv_addr.m_strIP, serv_addr.m_iPort) < 0)
+   {
+      if (updateMasters() < 0)
+         return -1;
+
+       m_Routing.lookup(path, serv_addr);
+       return login(serv_addr.m_strIP, serv_addr.m_iPort);
+   }
+
+   return 0;
+}
+
+int Client::lookup(const int32_t& key, Address& serv_addr)
+{
+   if (m_Routing.lookup(key, serv_addr) < 0)
+      return -1;
+
+   if (login(serv_addr.m_strIP, serv_addr.m_iPort) < 0)
+   {
+      if (updateMasters() < 0)
+         return -1;
+
+       m_Routing.lookup(key, serv_addr);
+       return login(serv_addr.m_strIP, serv_addr.m_iPort);
+   }
+
+   return 0;
+}
+
+int Client::retrieveMasterInfo(string& certfile)
+{
+   TCPTransport t;
+   t.open(NULL, 0);
+   if (t.connect(m_strServerIP.c_str(), m_iServerPort - 1) < 0)
+      return -1;
+
+   certfile = "";
+#ifndef WIN32
+   certfile = "/tmp/master_node.cert";
+#else
+   certfile = "master_node.cert";
+#endif
+
+   int32_t size = 0;
+   t.recv((char*)&size, 4);
+   int64_t recvsize = t.recvfile(certfile.c_str(), 0, size);
+   t.close();
+
+   if (recvsize <= 0)
+      return -1;
 
    return 0;
 }

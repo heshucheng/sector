@@ -47,15 +47,29 @@ written by
 #include <fstream>
 #include <vector>
 #include <sys/types.h>
-#include <stdint.h>
+#include <udt.h>
+#ifndef WIN32
+   #include <stdint.h>
+#endif
 
-struct Param
+#ifndef WIN32
+   #define SECTOR_API
+#else
+   #ifdef SECTOR_EXPORTS
+      #define SECTOR_API __declspec(dllexport)
+   #else
+      #define SECTOR_API __declspec(dllimport)
+   #endif
+   #pragma warning( disable: 4251 )
+#endif
+
+struct SECTOR_API Param
 {
    std::string m_strName;
    std::vector<std::string> m_vstrValue;
 };
 
-class ConfParser
+class SECTOR_API ConfParser
 {
 public:
    int init(const std::string& path);
@@ -108,7 +122,7 @@ public:
    MetaForm m_MetaType;		// form of metadata
 };
 
-class ClientConf
+class SECTOR_API ClientConf
 {
 public:
    int init(const std::string& path);
@@ -123,17 +137,17 @@ public:
    int m_iFuseReadAheadBlock;
 };
 
-class WildCard
+class SECTOR_API WildCard
 {
 public:
    static bool isWildCard(const std::string& path);
    static bool match(const std::string& card, const std::string& path);
 };
 
-class Session
+class SECTOR_API Session
 {
 public:
-   int loadInfo(const std::string& conf);
+   int loadInfo(const char* conf = NULL);
 
 public:
    ClientConf m_ClientConf;

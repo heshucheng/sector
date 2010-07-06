@@ -35,7 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 01/03/2010
+   Yunhong Gu, last updated 05/11/2010
 *****************************************************************************/
 
 
@@ -70,8 +70,16 @@ int Slave::init(const char* base)
 {
    if (NULL != base)
       m_strBase = base;
+   else
+   {
+      char* system_env = getenv("SECTOR_HOME");
+      if (NULL != system_env)
+         m_strBase = system_env;
+      else
+         m_strBase = "../";
+   }
 
-   string conf = m_strBase + "/../conf/slave.conf";
+   string conf = m_strBase + "/conf/slave.conf";
    if (m_SysConfig.init(conf) < 0)
    {
       cerr << "unable to initialize from configuration file; quit.\n";
@@ -99,9 +107,6 @@ int Slave::init(const char* base)
    // initialize local directory
    m_strHomeDir = m_SysConfig.m_strHomeDir;
 
-   // initialize slave log
-   m_SectorLog.init((m_strHomeDir + ".sector.log").c_str());
-
    // check local directory
    if (createSysDir() < 0)
    {
@@ -109,8 +114,11 @@ int Slave::init(const char* base)
       return -1;
    }
 
+   // initialize slave log
+   m_SectorLog.init((m_strHomeDir + "/.log").c_str());
+
    //copy permanent sphere libraries
-   system((string("cp ") + m_strBase + "/sphere/*.so "  + m_strHomeDir + "/.sphere/perm/").c_str());
+   system((string("cp ") + m_strBase + "/slave/sphere/*.so " + m_strHomeDir + "/.sphere/perm/").c_str());
 
    // cout << "scanning " << m_strHomeDir << endl;
    if (m_SysConfig.m_MetaType == DISK)
@@ -130,7 +138,7 @@ int Slave::connect()
    // join the server
    SSLTransport::init();
 
-   string cert = m_strBase + "/../conf/master_node.cert";
+   string cert = m_strBase + "/conf/master_node.cert";
 
    // calculate total available disk size
    struct statfs64 slavefs;
@@ -466,9 +474,8 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
       Param3* p = new Param3;
       p->serv_instance = this;
       p->transid = *(int32_t*)msg->getData();
-      p->timestamp = *(int64_t*)(msg->getData() + 4);
-      p->src = msg->getData() + 12;
-      p->dst = msg->getData() + 12 + p->src.length() + 1;
+      p->src = msg->getData() + 4;
+      p->dst = msg->getData() + 4 + p->src.length() + 1;
 
       p->master_ip = ip;
       p->master_port = port;
@@ -629,9 +636,75 @@ int Slave::processMCmd(const string& ip, const int port, int id, SectorMsg* msg)
 int Slave::report(const string& master_ip, const int& master_port, const int32_t& transid, const string& filename, const int& change)
 {
    vector<string> filelist;
-   filelist.push_back(filename);
+   if (getFileList(filename, filelist) <= 0)
+      return 0;
 
    return report(master_ip, master_port, transid, filelist, change);
+}
+
+int Slave::getFileList(const std::string& path, std::vector<std::string>& filelist)
+{
+   string abs_path = m_strHomeDir + path;
+   struct stat64 s;
+   if (stat64(abs_path.c_str(), &s) < 0)
+      return -1;
+
+   if (!S_ISDIR(s.st_mode))
+   {
+      filelist.push_back(path);
+      return 1;
+   }
+
+   dirent **namelist;
+   int n = scandir(abs_path.c_str(), &namelist, 0, alphasort);
+
+   if (n < 0)
+      return -1;
+
+   for (int i = 0; i < n; ++ i)
+   {
+      // skip "." and ".."
+      if ((strcmp(namelist[i]->d_name, ".") == 0) || (strcmp(namelist[i]->d_name, "..") == 0))
+      {
+         free(namelist[i]);
+         continue;
+      }
+
+      // check file name
+      bool bad = false;
+      for (char *p = namelist[i]->d_name, *q = namelist[i]->d_name + strlen(namelist[i]->d_name); p != q; ++ p)
+      {
+         if ((*p == 10) || (*p == 13))
+         {
+            bad = true;
+            break;
+         }
+      }
+      if (bad)
+         continue;
+
+      if (stat64((abs_path + "/" + namelist[i]->d_name).c_str(), &s) < 0)
+         continue;
+
+      // skip system file and directory
+      if (S_ISDIR(s.st_mode) && (namelist[i]->d_name[0] == '.'))
+      {
+         free(namelist[i]);
+         continue;
+      }
+
+      if (S_ISDIR(s.st_mode))
+         getFileList(path + "/" + namelist[i]->d_name, filelist);
+      else
+         filelist.push_back(path + "/" + namelist[i]->d_name);
+
+      free(namelist[i]);
+   }
+   free(namelist);
+
+   filelist.push_back(path);
+
+   return filelist.size();
 }
 
 int Slave::report(const string& master_ip, const int& master_port, const int32_t& transid, const vector<string>& filelist, const int& change)
@@ -645,7 +718,7 @@ int Slave::report(const string& master_ip, const int& master_port, const int32_t
 
       SNode sn;
       sn.m_strName = *i;
-      sn.m_bIsDir = 0;
+      sn.m_bIsDir = S_ISDIR(s.st_mode) ? 1 : 0;
       sn.m_llTimeStamp = s.st_mtime;
       sn.m_llSize = s.st_size;
 
@@ -835,6 +908,15 @@ int Slave::createSysDir()
    }
    closedir(test);
    system(("rm -rf " + reviseSysCmdPath(m_strHomeDir) + ".metadata/*").c_str());
+
+   test = opendir((m_strHomeDir + ".log").c_str());
+   if (NULL == test)
+   {
+      if ((errno != ENOENT) || (mkdir((m_strHomeDir + ".log").c_str(), S_IRWXU) < 0))
+         return -1;
+   }
+   closedir(test);
+   system(("rm -rf " + reviseSysCmdPath(m_strHomeDir) + ".log/*").c_str());
 
    test = opendir((m_strHomeDir + ".sphere").c_str());
    if (NULL == test)

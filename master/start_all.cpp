@@ -10,7 +10,12 @@ int main()
    system("nohup ./start_master > /dev/null &");
    cout << "start master ...\n";
 
-   ifstream ifs("../conf/slaves.list");
+   string sector_home = "../";
+   char* system_env = getenv("SECTOR_HOME");
+   if (NULL != system_env)
+      sector_home = system_env;
+
+   ifstream ifs((sector_home + "/conf/slaves.list").c_str());
 
    if (ifs.bad() || ifs.fail())
    {
@@ -72,7 +77,7 @@ int main()
       addr = addr.substr(0, addr.find(' '));
 
       //TODO: source .bash_profile to include more environments variables
-      system((string("ssh ") + addr + " \"" + base + "/start_slave " + base + " &> /dev/null &\" &").c_str());
+      system((string("ssh ") + addr + " \"" + base + "/slave/start_slave " + base + " &> /dev/null &\" &").c_str());
 
       cout << "start slave at " << addr << endl;
    }

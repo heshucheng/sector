@@ -49,19 +49,19 @@ FSClient* Client::createFSClient()
 {
    FSClient* sf = new FSClient;
    sf->m_pClient = this;
-   pthread_mutex_lock(&m_IDLock);
+   CGuard::enterCS(m_IDLock);
    sf->m_iID = m_iID ++;
    m_mFSList[sf->m_iID] = sf;
-   pthread_mutex_unlock(&m_IDLock);
+   CGuard::leaveCS(m_IDLock);
 
    return sf;
 }
 
 int Client::releaseFSClient(FSClient* sf)
 {
-   pthread_mutex_lock(&m_IDLock);
+   CGuard::enterCS(m_IDLock);
    m_mFSList.erase(sf->m_iID);
-   pthread_mutex_unlock(&m_IDLock);
+   CGuard::leaveCS(m_IDLock);
    delete sf;
 
    return 0;
@@ -82,17 +82,29 @@ m_bSecure(false),
 m_bLocal(false),
 m_pcLocalPath(NULL)
 {
+#ifndef WIN32
    pthread_mutex_init(&m_FileLock, NULL);
+#else
+   m_FileLock = CreateMutex(NULL, false, NULL);
+#endif
 }
 
 FSClient::~FSClient()
 {
    delete [] m_pcLocalPath;
+#ifndef WIN32
    pthread_mutex_destroy(&m_FileLock);
+#else
+   CloseHandle(m_FileLock);
+#endif
 }
 
 int FSClient::open(const string& filename, int mode, const string& hint)
 {
+   // if this client is already associated with an openned file, cannot open another file
+   if (0 != m_strFileName.length())
+      return -1;
+
    m_strFileName = Metadata::revisePath(filename);
 
    SectorMsg msg;
@@ -107,7 +119,7 @@ int FSClient::open(const string& filename, int mode, const string& hint)
    msg.setData(72, m_strFileName.c_str(), m_strFileName.length() + 1);
 
    Address serv;
-   m_pClient->m_Routing.lookup(m_strFileName, serv);
+   m_pClient->lookup(m_strFileName, serv);
    if (m_pClient->m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;
 
@@ -132,7 +144,11 @@ int FSClient::open(const string& filename, int mode, const string& hint)
 
    // cerr << "open file " << filename << " " << m_strSlaveIP << " " << m_iSlaveDataPort << endl;
    if (m_pClient->m_DataChn.connect(m_strSlaveIP, m_iSlaveDataPort) < 0)
-      return SectorError::E_CONNECTION;
+   {
+      // retry once
+      if (reopen() < 0)
+         return SectorError::E_CONNECTION;
+   }
 
    string localip;
    int localport;
@@ -161,15 +177,65 @@ int FSClient::open(const string& filename, int mode, const string& hint)
    return 0;
 }
 
+int FSClient::reopen()
+{
+   if (0 == m_strFileName.length())
+      return -1;
+
+   // currently re-open only works on read
+   if (m_bWrite)
+      return -1;
+
+   // close connection to the current slave
+   int32_t cmd = 5;
+   m_pClient->m_DataChn.send(m_strSlaveIP, m_iSlaveDataPort, m_iSession, (char*)&cmd, 4);
+   int response;
+   m_pClient->m_DataChn.recv4(m_strSlaveIP, m_iSlaveDataPort, m_iSession, response);
+   m_pClient->m_DataChn.remove(m_strSlaveIP, m_iSlaveDataPort);
+
+
+   SectorMsg msg;
+   msg.setType(112); // open the file
+   msg.setKey(m_pClient->m_iKey);
+   msg.setData(0, (char*)&m_iSession, 4);
+   int32_t port = m_pClient->m_DataChn.getPort();
+   msg.setData(4, (char*)&port, 4);
+
+   Address serv;
+   m_pClient->lookup(m_strFileName, serv);
+   if (m_pClient->m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
+      return SectorError::E_CONNECTION;
+
+   if (msg.getType() < 0)
+      return *(int32_t*)(msg.getData());
+
+   m_strSlaveIP = msg.getData();
+   m_iSlaveDataPort = *(int*)(msg.getData() + 64);
+
+   if (m_pClient->m_DataChn.connect(m_strSlaveIP, m_iSlaveDataPort) < 0)
+      return SectorError::E_CONNECTION;
+
+   memcpy(m_pcKey, m_pClient->m_pcCryptoKey, 16);
+   memcpy(m_pcIV, m_pClient->m_pcCryptoIV, 8);
+   m_pClient->m_DataChn.setCryptoKey(m_strSlaveIP, m_iSlaveDataPort, m_pcKey, m_pcIV);
+
+   return 0;
+}
+
 int64_t FSClient::read(char* buf, const int64_t& offset, const int64_t& size, const int64_t& prefetch)
 {
    CGuard fg(m_FileLock);
 
    if ((offset < 0) || (offset > m_llSize))
       return SectorError::E_INVALID;
+
+   // does not support buffer > 32bit now
+   if (size > 0x7FFFFFFF)
+      return -1;
+
    m_llCurReadPos = offset;
 
-   int realsize = size;
+   int realsize = int(size);
    if (m_llCurReadPos + size > m_llSize)
       realsize = int(m_llSize - m_llCurReadPos);
 
@@ -213,7 +279,11 @@ int64_t FSClient::read(char* buf, const int64_t& offset, const int64_t& size, co
 
    int response = -1;
    if ((m_pClient->m_DataChn.recv4(m_strSlaveIP, m_iSlaveDataPort, m_iSession, response) < 0) || (-1 == response))
+   {
+      if (reopen() >= 0)
+         return 0;
       return SectorError::E_CONNECTION;
+   }
 
    char* tmp = NULL;
    int64_t recvsize = m_pClient->m_DataChn.recv(m_strSlaveIP, m_iSlaveDataPort, m_iSession, tmp, realsize, m_bSecure);
@@ -221,8 +291,13 @@ int64_t FSClient::read(char* buf, const int64_t& offset, const int64_t& size, co
    {
       memcpy(buf, tmp, recvsize);
       m_llCurReadPos += recvsize;
+      delete [] tmp;
    }
-   delete [] tmp;
+   else if (recvsize < 0)
+   {
+      if (reopen() >= 0)
+         return 0;
+   }
 
    return recvsize;
 }
@@ -233,6 +308,10 @@ int64_t FSClient::write(const char* buf, const int64_t& offset, const int64_t& s
 
    if (offset < 0)
       return SectorError::E_INVALID;
+
+   if (size > 0x7FFFFFF)
+      return -1;
+
    m_llCurWritePos = offset;
 
    // write command: 2
@@ -309,21 +388,44 @@ int64_t FSClient::download(const char* localpath, const bool& cont)
 
    int64_t unit = 64000000; //send 64MB each time
    int64_t torecv = realsize;
-   int64_t recd = 0;
    while (torecv > 0)
    {
       int64_t block = (torecv < unit) ? torecv : unit;
-      if (m_pClient->m_DataChn.recvfile(m_strSlaveIP, m_iSlaveDataPort, m_iSession, ofs, offset + recd, block, m_bSecure) < 0)
+      if (m_pClient->m_DataChn.recvfile(m_strSlaveIP, m_iSlaveDataPort, m_iSession, ofs, m_llSize - torecv, block, m_bSecure) < 0)
          break;
 
-      recd += block;
       torecv -= block;
    }
 
-   if (recd < realsize)
-      return SectorError::E_CONNECTION;
+   if (torecv > 0)
+   {
+      // retry once with another copy
+      if (reopen() >= 0)
+      {
+         cmd = 3;
+         m_pClient->m_DataChn.send(m_strSlaveIP, m_iSlaveDataPort, m_iSession, (char*)&cmd, 4);
+         offset = ofs.tellp();
+         m_pClient->m_DataChn.send(m_strSlaveIP, m_iSlaveDataPort, m_iSession, (char*)&offset, 8);
+         response = -1;
+         if ((m_pClient->m_DataChn.recv4(m_strSlaveIP, m_iSlaveDataPort, m_iSession, response) < 0) || (-1 == response))
+            return SectorError::E_CONNECTION;
+
+         torecv = m_llSize - offset;
+         while (torecv > 0)
+         {
+            int64_t block = (torecv < unit) ? torecv : unit;
+            if (m_pClient->m_DataChn.recvfile(m_strSlaveIP, m_iSlaveDataPort, m_iSession, ofs, m_llSize - torecv, block, m_bSecure) < 0)
+               break;
+
+            torecv -= block;
+         }
+      }
+   }
 
    ofs.close();
+
+   if (torecv > 0)
+      return SectorError::E_CONNECTION;
 
    return realsize;
 }
@@ -387,6 +489,8 @@ int FSClient::close()
    m_pClient->m_DataChn.remove(m_strSlaveIP, m_iSlaveDataPort);
 
    m_pClient->m_Cache.remove(m_strFileName);
+
+   m_strFileName = "";
 
    return 0;
 }
@@ -464,7 +568,7 @@ bool FSClient::eof()
 
 int64_t FSClient::prefetch(const int64_t& offset, const int64_t& size)
 {
-   int realsize = size;
+   int realsize = (int)size;
    if (offset >= m_llSize)
       return -1;
    if (offset + size > m_llSize)

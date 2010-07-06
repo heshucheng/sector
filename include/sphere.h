@@ -41,13 +41,27 @@ written by
 #ifndef __SPHERE_H__
 #define __SPHERE_H__
 
-#include <stdint.h>
+#ifndef WIN32
+   #include <stdint.h>
+#endif
 #include <set>
 #include <vector>
 #include <map>
 #include <string>
+#include <udt.h>
 
-class SInput
+#ifndef WIN32
+   #define SECTOR_API
+#else
+   #ifdef SECTOR_EXPORTS
+      #define SECTOR_API __declspec(dllexport)
+   #else
+      #define SECTOR_API __declspec(dllimport)
+   #endif
+   #pragma warning( disable: 4251 )
+#endif
+
+class SECTOR_API SInput
 {
 public:
    char* m_pcUnit;		// input data
@@ -58,7 +72,7 @@ public:
    int m_iPSize;		// size of the parameter, 0 if no parameter
 };
 
-class SOutput
+class SECTOR_API SOutput
 {
 public:
    char* m_pcResult;		// buffer to store the result
@@ -77,11 +91,11 @@ public:
    std::string m_strError;	// error text to be send back to client
 
 public:
-   int resizeResBuf(const int64_t& newsize);
-   int resizeIdxBuf(const int64_t& newsize);
+   int resizeResBuf(const int& newsize);
+   int resizeIdxBuf(const int& newsize);
 };
 
-struct MemObj
+struct SECTOR_API MemObj
 {
    std::string m_strName;
    void* m_pLoc;
@@ -90,7 +104,7 @@ struct MemObj
    int64_t m_llLastRefTime;
 };
 
-class MOMgmt
+class SECTOR_API MOMgmt
 {
 public:
    MOMgmt();
@@ -106,14 +120,18 @@ public:
 
 private:
    std::map<std::string, MemObj> m_mObjects;
+#ifndef WIN32
    pthread_mutex_t m_MOLock;
+#else
+   HANDLE m_MOLock;
+#endif
 
 private:
    std::vector<MemObj> m_vTBA;
    std::vector<std::string> m_vTBD;
 };
 
-class SFile
+class SECTOR_API SFile
 {
 public:
    std::string m_strHomeDir;		// Sector data home directory: constant

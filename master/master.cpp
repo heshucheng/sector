@@ -35,11 +35,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /*****************************************************************************
 written by
-   Yunhong Gu, last updated 03/15/2010
+   Yunhong Gu, last updated 06/12/2010
 *****************************************************************************/
 
 #include <common.h>
 #include <ssltransport.h>
+#include <tcptransport.h>
 #include <dirent.h>
 #include <signal.h>
 #include <iostream>
@@ -76,10 +77,15 @@ Master::~Master()
 
 int Master::init()
 {
-   m_SectorLog.init("sector.log");
+   //The master will look for the configurations from $SECTOR_HOME/conf/
+   //If $SECTOR_HOME is not set, it tries to check ../conf
+   m_strSectorHome = "../";
+   char* system_env = getenv("SECTOR_HOME");
+   if (NULL != system_env)
+      m_strSectorHome = system_env;
 
    // read configuration from master.conf
-   if (m_SysConfig.init("../conf/master.conf") < 0)
+   if (m_SysConfig.init(m_strSectorHome + "/conf/master.conf") < 0)
    {
       cerr << "unable to read/parse configuration file.\n";
       m_SectorLog.insert("unable to read/parse configuration file.");
@@ -87,13 +93,13 @@ int Master::init()
    }
 
    struct stat s;
-   if (stat("../conf/topology.conf", &s) < 0)
+   if (stat((m_strSectorHome + "/conf/topology.conf").c_str(), &s) < 0)
    {
       cerr << "Warning: no topology configuration found.\n";
       m_SectorLog.insert("Warning: no topology configuration found.");
    }
 
-   m_SlaveManager.init("../conf/topology.conf");
+   m_SlaveManager.init((m_strSectorHome + "/conf/topology.conf").c_str());
    m_SlaveManager.setSlaveMinDiskSpace(m_SysConfig.m_llSlaveMinDiskSpace);
    m_SlaveManager.serializeTopo(m_pcTopoData, m_iTopoDataSize);
 
@@ -128,12 +134,15 @@ int Master::init()
    closedir(test);
 
    if ((mkdir((m_strHomeDir + ".metadata").c_str(), S_IRWXU) < 0)
-      || (mkdir((m_strHomeDir + ".tmp").c_str(), S_IRWXU) < 0))
+      || (mkdir((m_strHomeDir + ".tmp").c_str(), S_IRWXU) < 0)
+      || (mkdir((m_strHomeDir + ".log").c_str(), S_IRWXU) < 0))
    {
       cerr << "unable to create home directory.\n";
       m_SectorLog.insert("unable to create home directory.");
       return -1;
    }
+
+   m_SectorLog.init((m_strHomeDir + "/.log").c_str());
 
    if (m_SysConfig.m_MetaType == DISK)
       m_pMetadata = new Index2;
@@ -142,7 +151,7 @@ int Master::init()
    m_pMetadata->init(m_strHomeDir + ".metadata");
 
    // load slave list and addresses
-   loadSlaveAddr("../conf/slaves.list");
+   loadSlaveAddr(m_strSectorHome + "/conf/slaves.list");
 
    // add "slave" as a special user
    User* au = new User;
@@ -167,7 +176,7 @@ int Master::init()
 
    //connect security server to get ID
    SSLTransport secconn;
-   if (secconn.initClientCTX("../conf/security_node.cert") < 0)
+   if (secconn.initClientCTX((m_strSectorHome + "/conf/security_node.cert").c_str()) < 0)
    {
       cerr << "No security node certificate found.\n";
       m_SectorLog.insert("No security node certificate found.");
@@ -191,6 +200,11 @@ int Master::init()
    addr.m_strIP = "";
    addr.m_iPort = m_SysConfig.m_iServerPort;
    m_Routing.insert(m_iRouterKey, addr);
+
+   // start utility thread
+   pthread_t utilserver;
+   pthread_create(&utilserver, NULL, utility, this);
+   pthread_detach(utilserver);
 
    // start service thread
    pthread_t svcserver;
@@ -219,7 +233,7 @@ int Master::init()
 int Master::join(const char* ip, const int& port)
 {
    // join the server
-   string cert = "../conf/master_node.cert";
+   string cert = m_strSectorHome + "/conf/master_node.cert";
 
    SSLTransport s;
    s.initClientCTX(cert.c_str());
@@ -446,7 +460,7 @@ int Master::run()
 
             // kill and restart the slave
             system((string("ssh ") + sa->second.m_strAddr + " killall -9 start_slave").c_str());
-            system((string("ssh ") + sa->second.m_strAddr + " \"" + sa->second.m_strBase + "/start_slave " + sa->second.m_strBase + " &> /dev/null &\"").c_str());
+            system((string("ssh ") + sa->second.m_strAddr + " \"" + sa->second.m_strBase + "/slave/start_slave " + sa->second.m_strBase + " &> /dev/null &\"").c_str());
          }
       }
 
@@ -456,7 +470,7 @@ int Master::run()
       // check replica, create or remove replicas if necessary
       // only the first master is responsible for replica checking
       map<string, int> special;
-      populateSpecialRep("../conf/replica.conf", special);
+      populateSpecialRep(m_strSectorHome + "/conf/replica.conf", special);
 
       pthread_mutex_lock(&m_ReplicaLock);
       if (m_vstrToBeReplicated.empty())
@@ -474,6 +488,48 @@ int Master::stop()
    m_Status = STOPPED;
 
    return 0;
+}
+
+void* Master::utility(void* s)
+{
+   Master* self = (Master*)s;
+
+   //the utility thread is used to allow clients to download certain information without login
+   //such information may include the master certificate
+
+   char* buf = new char[65536];
+   ifstream ifs((self->m_strSectorHome + "/conf/master_node.cert").c_str());
+   ifs.seekg(0, ios::end);
+   int32_t size = ifs.tellg();
+   ifs.seekg(0);
+   ifs.read(buf, size);
+   ifs.close();
+
+   //ignore SIGPIPE
+   sigset_t ps;
+   sigemptyset(&ps);
+   sigaddset(&ps, SIGPIPE);
+   pthread_sigmask(SIG_BLOCK, &ps, NULL);
+
+   TCPTransport util;
+   util.open(NULL, self->m_SysConfig.m_iServerPort - 1);
+   util.listen();
+
+   while (self->m_Status == RUNNING)
+   {
+      char ip[64];
+      int port;
+      TCPTransport* t = util.accept(ip, port);
+      if (NULL == t)
+         continue;
+
+      t->send((char*)&size, 4);
+      t->send(buf, size);
+      t->close();
+      delete t;
+   }
+
+   return NULL;
 }
 
 void* Master::service(void* s)
@@ -495,7 +551,7 @@ void* Master::service(void* s)
    }
 
    SSLTransport serv;
-   if (serv.initServerCTX("../conf/master_node.cert", "../conf/master_node.key") < 0)
+   if (serv.initServerCTX((self->m_strSectorHome + "/conf/master_node.cert").c_str(), (self->m_strSectorHome + "/conf/master_node.key").c_str()) < 0)
    {
       self->m_SectorLog.insert("WARNING: No master_node certificate or key found.");
       return NULL;
@@ -527,7 +583,7 @@ void* Master::serviceEx(void* param)
    Master* self = (Master*)param;
 
    SSLTransport secconn;
-   if (secconn.initClientCTX("../conf/security_node.cert") < 0)
+   if (secconn.initClientCTX((self->m_strSectorHome + "/conf/security_node.cert").c_str()) < 0)
    {
       self->m_SectorLog.insert("No security node certificate found. All slave/client connection will be rejected.");
       return NULL;
@@ -1176,6 +1232,8 @@ int Master::processSysCmd(const string& ip, const int port, const User* user, co
 
    case 5: //update master lists
    {
+      //TODO: only return a list when the masters have changed
+
       int num = m_Routing.getNumOfMasters() - 1;
       msg->setData(0, (char*)&num, 4);
       int p = 4;
@@ -1255,6 +1313,15 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
          break;
       }
 
+      SNode attr;
+      int r = m_pMetadata->lookup(msg->getData(), attr);
+      if ((r < 0) || !attr.m_bIsDir)
+      {
+         reject(ip, port, id, SectorError::E_NOTDIR);
+         //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "stat", msg->getData(), "REJECT", "");
+         break;
+      }
+
       vector<string> filelist;
       m_pMetadata->list(dir.c_str(), filelist);
 
@@ -1297,41 +1364,40 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       {
          reject(ip, port, id, SectorError::E_NOEXIST);
          //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "stat", msg->getData(), "REJECT", "");
+         break;
+      }
+
+      char buf[128];
+      attr.serialize(buf);
+      msg->setData(0, buf, strlen(buf) + 1);
+
+      int c = 0;
+
+      if (!attr.m_bIsDir)
+      {
+         for (set<Address, AddrComp>::iterator i = attr.m_sLocation.begin(); i != attr.m_sLocation.end(); ++ i)
+         {
+            msg->setData(128 + c * 68, i->m_strIP.c_str(), i->m_strIP.length() + 1);
+            msg->setData(128 + c * 68 + 64, (char*)&(i->m_iPort), 4);
+            ++ c;
+         }
       }
       else
       {
-         char buf[128];
-         attr.serialize(buf);
-         msg->setData(0, buf, strlen(buf) + 1);
+         set<Address, AddrComp> addr;
+         m_pMetadata->lookup(attr.m_strName.c_str(), addr);
 
-         int c = 0;
-
-         if (!attr.m_bIsDir)
+         for (set<Address, AddrComp>::iterator i = addr.begin(); i != addr.end(); ++ i)
          {
-            for (set<Address, AddrComp>::iterator i = attr.m_sLocation.begin(); i != attr.m_sLocation.end(); ++ i)
-            {
-               msg->setData(128 + c * 68, i->m_strIP.c_str(), i->m_strIP.length() + 1);
-               msg->setData(128 + c * 68 + 64, (char*)&(i->m_iPort), 4);
-               ++ c;
-            }
+            msg->setData(128 + c * 68, i->m_strIP.c_str(), i->m_strIP.length() + 1);
+            msg->setData(128 + c * 68 + 64, (char*)&(i->m_iPort), 4);
+            ++ c;
          }
-         else
-         {
-            set<Address, AddrComp> addr;
-            m_pMetadata->lookup(attr.m_strName.c_str(), addr);
-
-            for (set<Address, AddrComp>::iterator i = addr.begin(); i != addr.end(); ++ i)
-            {
-               msg->setData(128 + c * 68, i->m_strIP.c_str(), i->m_strIP.length() + 1);
-               msg->setData(128 + c * 68 + 64, (char*)&(i->m_iPort), 4);
-               ++ c;
-            }
-         }
-
-         m_GMP.sendto(ip, port, id, msg);
-
-         //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "stat", msg->getData(), "SUCCESS", "");
       }
+
+      m_GMP.sendto(ip, port, id, msg);
+
+      //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "stat", msg->getData(), "SUCCESS", "");
 
       break;
    }
@@ -1720,8 +1786,24 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
 
          // otherwise, create a new file for write
          // choose a slave node for the new file
-         set<int> empty;
-         if (m_SlaveManager.chooseIONode(empty, hint, mode, addr, m_SysConfig.m_iReplicaNum) <= 0)
+         set<Address, AddrComp> candidates;
+
+         //if the current directory is nonsplit, the new file must be created on the same node
+         for (int i = 0, n = path.length(); i < n; ++ i)
+         {
+            // if there is a ".nosplit" file in the path dir
+            if (path.c_str()[i] == '/')
+            {
+               string updir = path.substr(0, i);
+               if (m_pMetadata->lookup(updir + "/.nosplit", attr) > 0)
+               {
+                  candidates = attr.m_sLocation;
+                  break;
+               }
+            }
+         }
+
+         if (m_SlaveManager.chooseIONode(candidates, hint, mode, addr, m_SysConfig.m_iReplicaNum) <= 0)
          {
             reject(ip, port, id, SectorError::E_NODISK);
             //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "open", msg->getData(), "REJECT", "");
@@ -1802,7 +1884,7 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       msg->setData(64, (char*)&dstport, 4);
       msg->setData(68, (char*)&transid, 4);
       msg->setData(72, (char*)&attr.m_llSize, 8);
-      msg->setData(80, (char*)&attr.m_llSize, 8);
+      msg->setData(80, (char*)&attr.m_llTimeStamp, 8);
       msg->m_iDataLength = SectorMsg::m_iHdrSize + 88;
 
       m_GMP.sendto(ip, port, id, msg);
@@ -1810,6 +1892,76 @@ int Master::processFSCmd(const string& ip, const int port,  const User* user, co
       //if (key != 0)
       //   m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "open", path.c_str(), "SUCCESS", addr.rbegin()->m_strIP.c_str());
 
+      break;
+   }
+
+   case 112: // reopen a file, connect to a new slave
+   {
+      int32_t transid = *(int32_t*)msg->getData();
+      int32_t dataport = *(int32_t*)(msg->getData() + 4);
+
+      Transaction t;
+      if ((m_TransManager.retrieve(transid, t) < 0) || (key != t.m_iUserKey))
+      {
+         msg->setType(-msg->getType());
+         m_GMP.sendto(ip, port, id, msg);
+         break;
+      }
+
+      SNode attr;
+      m_pMetadata->lookup(t.m_strFile.c_str(), attr);
+      if (attr.m_sLocation.size() <= 1)
+      {
+         msg->setType(-msg->getType());
+         m_GMP.sendto(ip, port, id, msg);
+         break;
+      }
+
+      // choose from unused data locations only
+      set<Address, AddrComp> candidates = attr.m_sLocation;
+      for (set<int>::iterator i = t.m_siSlaveID.begin(); i != t.m_siSlaveID.end(); ++ i)
+      {
+         Address a;
+         m_SlaveManager.getSlaveAddr(*i, a);
+         candidates.erase(a);
+      }
+
+      vector<SlaveNode> addr;
+      Address hint;
+      hint.m_strIP = ip;      
+      m_SlaveManager.chooseIONode(candidates, hint, t.m_iMode, addr, m_SysConfig.m_iReplicaNum);
+      if (addr.empty())
+      {
+         reject(ip, port, id, SectorError::E_RESOURCE);
+         break;
+      }
+
+      msg->setType(110);
+      msg->setData(0, ip.c_str(), ip.length() + 1);
+      msg->setData(64, (char*)&dataport, 4);
+      msg->setData(136, (char*)&key, 4);
+      msg->setData(140, (char*)&t.m_iMode, 4);
+      msg->setData(144, (char*)&transid, 4);
+      msg->setData(148, (char*)user->m_pcKey, 16);
+      msg->setData(164, (char*)user->m_pcIV, 8);
+      msg->setData(172, t.m_strFile.c_str(), t.m_strFile.length() + 1);
+
+      SectorMsg response;
+      if ((m_GMP.rpc(addr.begin()->m_strIP.c_str(), addr.begin()->m_iPort, msg, &response) < 0) || (response.getType() < 0))
+      {
+         reject(ip, port, id, SectorError::E_RESOURCE);
+         //m_SectorLog.logUserActivity(user->m_strName.c_str(), ip, "open", path.c_str(), "FAIL", "");
+      }
+
+      m_TransManager.addSlave(transid, addr.begin()->m_iNodeID);
+
+      // send the connection information back to the client
+      msg->setType(112);
+      msg->setData(0, addr.begin()->m_strIP.c_str(), addr.begin()->m_strIP.length() + 1);
+      msg->setData(64, (char*)&(addr.begin()->m_iDataPort), 4);
+      msg->m_iDataLength = SectorMsg::m_iHdrSize + 68;
+
+      m_GMP.sendto(ip, port, id, msg);
       break;
    }
 
@@ -2176,7 +2328,7 @@ void* Master::replica(void* s)
          }
          else
          {
-            // avoid replicate a file that is currently being replicated
+            // avoid replicating a file that is currently being replicated
             if (self->m_sstrOnReplicate.find(src) != self->m_sstrOnReplicate.end())
                continue;
 
@@ -2198,15 +2350,27 @@ void* Master::replica(void* s)
 int Master::createReplica(const string& src, const string& dst)
 {
    SNode attr;
-   int r = m_pMetadata->lookup(src.c_str(), attr);
-   if (r < 0)
-      return r;
+   if (m_pMetadata->lookup(src.c_str(), attr) < 0)
+      return -1;
 
    SlaveNode sn;
    if (src == dst)
    {
-      if (m_SlaveManager.chooseReplicaNode(attr.m_sLocation, sn, attr.m_llSize) < 0)
-         return -1;
+      // data replication
+      if (attr.m_bIsDir)
+      {
+         // replicate a directory, only if there is ".nosplit" in the current directory
+         SNode sub_attr;
+         if (m_pMetadata->lookup((src + "/.nosplit").c_str(), attr) < 0)
+            return -1;
+         if (m_SlaveManager.chooseReplicaNode(sub_attr.m_sLocation, sn, attr.m_llSize) < 0)
+            return -1;
+      }
+      else
+      {
+         if (m_SlaveManager.chooseReplicaNode(attr.m_sLocation, sn, attr.m_llSize) < 0)
+            return -1;
+      }
    }
    else
    {
@@ -2216,44 +2380,46 @@ int Master::createReplica(const string& src, const string& dst)
    }
 
    int transid = m_TransManager.create(0, 0, 111, dst, 0);
+   if (src == dst)
+      m_sstrOnReplicate.insert(src);
 
    SectorMsg msg;
    msg.setType(111);
    msg.setData(0, (char*)&transid, 4);
-   msg.setData(4, (char*)&attr.m_llTimeStamp, 8);
-   msg.setData(12, src.c_str(), src.length() + 1);
-   msg.setData(12 + src.length() + 1, dst.c_str(), dst.length() + 1);
+   msg.setData(4, src.c_str(), src.length() + 1);
+   msg.setData(4 + src.length() + 1, dst.c_str(), dst.length() + 1);
 
    if ((m_GMP.rpc(sn.m_strIP.c_str(), sn.m_iPort, &msg, &msg) < 0) || (msg.getData() < 0))
+   {
+      m_TransManager.updateSlave(transid, sn.m_iNodeID);
+      m_sstrOnReplicate.erase(src);
       return -1;
+   }
 
    m_TransManager.addSlave(transid, sn.m_iNodeID);
-
-   if (src == dst)
-      m_sstrOnReplicate.insert(src);
 
    // replicate index file to the same location
    string idx = src + ".idx";
-   r = m_pMetadata->lookup(idx.c_str(), attr);
-
-   if (r < 0)
+   if (m_pMetadata->lookup(idx.c_str(), attr) < 0)
       return 0;
 
    transid = m_TransManager.create(0, 0, 111, dst + ".idx", 0);
+   if (src == dst)
+      m_sstrOnReplicate.insert(idx);
 
    msg.setType(111);
    msg.setData(0, (char*)&transid, 4);
-   msg.setData(4, (char*)&attr.m_llTimeStamp, 8);
-   msg.setData(12, idx.c_str(), idx.length() + 1);
-   msg.setData(12 + idx.length() + 1, (dst + ".idx").c_str(), (dst + ".idx").length() + 1);
+   msg.setData(4, idx.c_str(), idx.length() + 1);
+   msg.setData(4 + idx.length() + 1, (dst + ".idx").c_str(), (dst + ".idx").length() + 1);
 
    if ((m_GMP.rpc(sn.m_strIP.c_str(), sn.m_iPort, &msg, &msg) < 0) || (msg.getData() < 0))
+   {
+      m_TransManager.updateSlave(transid, sn.m_iNodeID);
+      m_sstrOnReplicate.erase(idx);
       return 0;
+   }
 
    m_TransManager.addSlave(transid, sn.m_iNodeID);
-
-   if (src == dst)
-      m_sstrOnReplicate.insert(idx);
 
    return 0;
 }

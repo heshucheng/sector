@@ -49,12 +49,20 @@ m_llCacheSize(0),
 m_llMaxCacheSize(10000000),
 m_llMaxCacheTime(10000000)
 {
+#ifndef WIN32
    pthread_mutex_init(&m_Lock, NULL);
+#else
+   m_Lock = CreateMutex(NULL, false, NULL);
+#endif
 }
 
 Cache::~Cache()
 {
+#ifndef WIN32
    pthread_mutex_destroy(&m_Lock);
+#else
+   CloseHandle(m_Lock);
+#endif
 }
 
 int Cache::setMaxCacheSize(const int64_t ms)
@@ -173,7 +181,7 @@ int Cache::insert(char* block, const std::string& path, const int64_t& offset, c
    return 0;
 }
 
-int Cache::read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size)
+int64_t Cache::read(const std::string& path, char* buf, const int64_t& offset, const int64_t& size)
 {
    CGuard sg(m_Lock);
 
@@ -190,7 +198,7 @@ int Cache::read(const std::string& path, char* buf, const int64_t& offset, const
       // this condition can be improved to provide finer granularity
       if ((offset >= i->m_llOffset) && (i->m_llSize - (offset - i->m_llOffset) >= size))
       {
-         memcpy(buf, i->m_pcBlock + offset - i->m_llOffset, size);
+         memcpy(buf, i->m_pcBlock + offset - i->m_llOffset, int(size));
          i->m_llLastAccessTime = CTimer::getTime();
          // update the file's last access time; it must be equal to the block's last access time
          s->second.m_llLastAccessTime = i->m_llLastAccessTime;
@@ -226,15 +234,21 @@ int Cache::shrink()
    // find the block with the earliest lass access time
    // currently we assume all blocks have equal size, so removing one block is enough for a new block
    map<string, list<CacheBlock> >::iterator c = m_mCacheBlocks.find(last_file);
+   latest_time = CTimer::getTime();
+   list<CacheBlock>::iterator d = c->second.begin();
    for (list<CacheBlock>::iterator i = c->second.begin(); i != c->second.end(); ++ i)
    {
-      if (i->m_llLastAccessTime == latest_time)
+      if (i->m_llLastAccessTime < latest_time)
       {
-         delete i->m_pcBlock;
-         c->second.erase(i);
-         break;
+         latest_time = i->m_llLastAccessTime;
+         d = i;
       }
    }
+
+   delete [] d->m_pcBlock;
+   d->m_pcBlock = NULL;
+   m_llCacheSize -= d->m_llSize;
+   c->second.erase(d);
 
    return 0;
 }
