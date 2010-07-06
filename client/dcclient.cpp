@@ -1142,8 +1142,8 @@ int DCClient::segmentData()
          ds->m_pResult = new SphereResult;
          ds->m_pResult->m_iResID = ds->m_iID;
          ds->m_pResult->m_strOrigFile = ds->m_strDataFile;
-         ds->m_pResult->m_llOrigStartRec = 0;
-         ds->m_pResult->m_llOrigEndRec = -1;
+         //ds->m_pResult->m_llOrigStartRec = 0;
+         //ds->m_pResult->m_llOrigEndRec = -1;
 
          m_mpDS[ds->m_iID] = ds;
       }
@@ -1197,8 +1197,8 @@ int DCClient::segmentData()
             ds->m_pResult = new SphereResult;
             ds->m_pResult->m_iResID = ds->m_iID;
             ds->m_pResult->m_strOrigFile = ds->m_strDataFile;
-            ds->m_pResult->m_llOrigStartRec = ds->m_llOffset;
-            ds->m_pResult->m_llOrigEndRec = ds->m_llSize;
+            //ds->m_pResult->m_llOrigStartRec = ds->m_llOffset;
+            //ds->m_pResult->m_llOrigEndRec = ds->m_llSize;
 
             m_mpDS[ds->m_iID] = ds;
 

@@ -113,7 +113,9 @@ int Client::init(const string& server, const int& port)
    struct addrinfo* result;
    if (getaddrinfo(server.c_str(), NULL, NULL, &result) != 0)
    {
+#ifdef DEBUG
       cerr << "incorrect host name.\n";
+#endif
       return -1;
    }
 
@@ -131,14 +133,18 @@ int Client::init(const string& server, const int& port)
    Transport::initialize();
    if (m_GMP.init(0) < 0)
    {
+#ifdef DEBUG
       cerr << "unable to init GMP.\n ";
+#endif
       return -1;
    }
 
    int dataport = 0;
    if (m_DataChn.init("", dataport) < 0)
    {
+#ifdef DEBUG
       cerr << "unable to init data channel.\n";
+#endif
       return -1;
    }
 
@@ -152,7 +158,8 @@ int Client::init(const string& server, const int& port)
    return 0;
 }
 
-int Client::login(const string& username, const string& password, const char* cert)
+int Client::login(const string& username, const string& password, const char* cert,
+                  int default_asn1_cert_len, const unsigned char *default_asn1_cert)
 {
    if (m_iKey > 0)
       return m_iKey;
@@ -167,14 +174,21 @@ int Client::login(const string& username, const string& password, const char* ce
 
    int result;
    SSLTransport secconn;
-   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0)
+   if ((result = secconn.initClientCTX(master_cert.c_str())) < 0) {
+     if (default_asn1_cert) {
+       if ((result = secconn.initClientCTX_ASN1(default_asn1_cert_len, default_asn1_cert)) < 0)
          return result;
+     } else
+       return result;
+   }
    if ((result = secconn.open(NULL, 0)) < 0)
       return result;
 
    if ((result = secconn.connect(m_strServerHost.c_str(), m_iServerPort)) < 0)
    {
+#ifdef DEBUG
       cerr << "cannot set up secure connection to the master.\n";
+#endif
       return result;
    }
 
@@ -277,7 +291,9 @@ int Client::login(const string& serv_ip, const int& serv_port)
 
    if ((result = secconn.connect(serv_ip.c_str(), serv_port)) < 0)
    {
+#ifdef DEBUG
       cerr << "cannot set up secure connection to the master.\n";
+#endif
       return result;
    }
 

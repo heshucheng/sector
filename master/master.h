@@ -79,6 +79,7 @@ public:
 
  private:
    static void* utility(void* s);
+   static void* vz_utility(void* s);
 
    ThreadJobQueue m_ServiceJobQueue;			// job queue for service thread pool
    struct ServiceJobParam
