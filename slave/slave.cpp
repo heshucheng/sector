@@ -48,6 +48,7 @@ written by
 #include <unistd.h>
 #include <sys/times.h>
 #include <utime.h>
+#include <sys/xattr.h>
 #include "common.h"
 
 using namespace std;
@@ -411,7 +412,7 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
    {
       char* path = msg->getData();
       m_pLocalFile->remove(path, true);
-      string sysrm = string("rm -rf ") + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path);
+      string sysrm = string("rm -rf ") + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path) + " " + reviseSysCmdPath(m_strHomeDir) + reviseSysCmdPath(path) + ".idx";
       system(sysrm.c_str());
 
       char* tmp = new char[64 + strlen(path)];
@@ -431,6 +432,15 @@ int Slave::processFSCmd(const string& ip, const int port, int id, SectorMsg* msg
       ut.modtime = *(int64_t*)(msg->getData() + strlen(path) + 1);;
       utime((m_strHomeDir + path).c_str(), &ut);
 
+      break;
+   }
+
+   case 108: // settype
+   {
+      char* path = msg->getData();
+      char *newtype = msg->getData() + strlen(msg->getData()) + 1;
+      if (setxattr((m_strHomeDir + path).c_str(), "user.vz.type", newtype, strlen(newtype)+1, 0) < 0)
+        perror("setxattr");
       break;
    }
 
@@ -721,8 +731,11 @@ int Slave::report(const string& master_ip, const int& master_port, const int32_t
       sn.m_bIsDir = S_ISDIR(s.st_mode) ? 1 : 0;
       sn.m_llTimeStamp = s.st_mtime;
       sn.m_llSize = s.st_size;
+      char typebuf[4096] = ""; 
+      getxattr((m_strHomeDir + *i).c_str(), "user.vz.type", typebuf, 4096);
+      sn.m_type = typebuf;
 
-      char buf[1024];
+      char buf[4096];
       sn.serialize(buf);
 
       //update local
@@ -783,7 +796,7 @@ int Slave::reportMO(const std::string& master_ip, const int& master_port, const 
          sn.m_llTimeStamp = i->m_llCreationTime;
          sn.m_llSize = 8;
 
-         char buf[1024];
+         char buf[4096];
          sn.serialize(buf);
          serlist.push_back(buf);
       }

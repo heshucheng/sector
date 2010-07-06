@@ -90,6 +90,7 @@ public:
    int64_t m_llTimeStamp;
    int64_t m_llSize;
    std::string m_strChecksum;
+   std::string m_type;
 
 public:
    int serialize(char* buf);
@@ -156,6 +157,7 @@ public:
    int rmr(const std::string& path);
    int copy(const std::string& src, const std::string& dst);
    int utime(const std::string& path, const int64_t& ts);
+   int settype(const std::string& path, const std::string& newtype);
 
    int sysinfo(SysStat& sys);
 
@@ -274,8 +276,8 @@ public:
    int m_iIndexLen;             // result data index length
 
    std::string m_strOrigFile;   // original input file
-   int64_t m_llOrigStartRec;    // first record of the original input file
-   int64_t m_llOrigEndRec;      // last record of the original input file
+  //int64_t m_llOrigStartRec;    // first record of the original input file
+  //int64_t m_llOrigEndRec;      // last record of the original input file
 };
 
 class SECTOR_API SphereProcess

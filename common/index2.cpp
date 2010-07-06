@@ -49,6 +49,7 @@ written by
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstring>
+#include <sys/xattr.h>
 
 using namespace std;
 
@@ -371,6 +372,12 @@ int Index2::utime(const string& path, const int64_t& ts)
    return 0;
 }
 
+int Index2::settype(const string& path, const string &newtype)
+{
+   setxattr((m_strMetaPath + "/" + path).c_str(), "user.vz.type", newtype.c_str(), newtype.length()+1, 0);
+   return 0;
+}
+
 int Index2::serialize(const string& path, const string& dstfile)
 {
    ofstream ofs(dstfile.c_str());
@@ -506,6 +513,9 @@ int Index2::scan(const string& data, const string& meta)
 
       sn.m_llSize = s.st_size;
       sn.m_llTimeStamp = s.st_mtime;
+      char typebuf[4096] = ""; 
+      getxattr((data + "/" + namelist[i]->d_name).c_str(), "user.vz.type", typebuf, 4096);
+      sn.m_type = typebuf;
 
       if (S_ISDIR(s.st_mode))
       {

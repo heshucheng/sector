@@ -315,7 +315,7 @@ int DCClient::run(const SphereStream& input, SphereStream& output, const string&
    if (prepareInput() < 0)
       return -1;
 
-   cout << "JOB " << m_pInput->m_iFileNum << " " << m_pInput->m_llSize << " " << m_pInput->m_llRecNum << endl;
+   // cout << "JOB " << m_pInput->m_iFileNum << " " << m_pInput->m_llSize << " " << m_pInput->m_llRecNum << endl;
 
    SectorMsg msg;
    msg.setType(202); // locate available SPE
@@ -326,14 +326,18 @@ int DCClient::run(const SphereStream& input, SphereStream& output, const string&
    m_pClient->m_Routing.getPrimaryMaster(serv);
    if ((m_pClient->m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0) || (msg.getType() < 0))
    {
+#ifdef DEBUG
       cerr << "unable to locate any SPE.\n";
+#endif
       return -1;
    }
 
    m_iSPENum = (msg.m_iDataLength - 4) / 72;
    if (0 == m_iSPENum)
    {
+#ifdef DEBUG
       cerr << "no available SPE found.\n";
+#endif
       return SectorError::E_RESOURCE;
    }
 
@@ -341,7 +345,9 @@ int DCClient::run(const SphereStream& input, SphereStream& output, const string&
 
    if (segmentData() <= 0)
    {
+#ifdef DEBUG
       cerr << "data segmentation error.\n";
+#endif
       return -1;
    }
 
@@ -350,7 +356,9 @@ int DCClient::run(const SphereStream& input, SphereStream& output, const string&
 
    if (prepareOutput(msg.getData()) < 0)
    {
+#ifdef DEBUG
       cerr << "fail to locate any shufflers.\n";
+#endif
       return -1;
    }
 
@@ -361,7 +369,7 @@ int DCClient::run(const SphereStream& input, SphereStream& output, const string&
    m_iAvailRes = 0;
    m_bBucketHealth = true;
 
-   cout << m_mSPE.size() << " spes found! " << m_mpDS.size() << " data seg total." << endl;
+   // cout << m_mSPE.size() << " spes found! " << m_mpDS.size() << " data seg total." << endl;
 
    // starting...
 #ifndef WIN32
@@ -442,7 +450,9 @@ DWORD WINAPI DCClient::run(LPVOID param)
 	  s->second.m_LastUpdateTime = CTimer::getTime();
       if (progress < 0)
       {
+#ifdef DEBUG
          cerr << "SPE PROCESSING ERROR " << ip << " " << port << endl;
+#endif
 
          //error, quit this segment on the SPE
          s->second.m_pDS->m_iStatus = -1;
@@ -1106,11 +1116,14 @@ int DCClient::connectSPE(SPE& s)
 
 int DCClient::segmentData()
 {
-   if (0 == m_iRows)
+   if (0 == m_iRows || m_pInput->m_llRecNum == -1)
    {
       int seq = 0;
       for (int i = 0; i < m_pInput->m_iFileNum; ++ i)
       {
+         if ((0 == m_pInput->m_vFiles[i].length()) || (0 == m_pInput->m_vSize[i]))
+            continue;
+
          if (m_pInput->m_vLocation[i].empty())
             return -1;
 
@@ -1118,7 +1131,10 @@ int DCClient::segmentData()
          ds->m_iID = seq ++;
          ds->m_strDataFile = m_pInput->m_vFiles[i];
          ds->m_llOffset = 0;
-         ds->m_llSize = m_pInput->m_vRecNum[i];
+         if (m_pInput->m_llRecNum != -1)
+           ds->m_llSize = m_pInput->m_vRecNum[i];
+         else
+           ds->m_llSize = m_pInput->m_vSize[i];
          ds->m_iSPEID = -1;
          ds->m_iStatus = 0;
          ds->m_pLoc = &m_pInput->m_vLocation[i];

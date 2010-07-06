@@ -207,6 +207,7 @@ void* Slave::SPEHandler(void* p)
    delete (Param4*)p;
 
    SectorMsg msg;
+   string lib;
 
    // cout << "rendezvous connect " << ip << " " << dataport << endl;
    if (self->m_DataChn.connect(ip, dataport) < 0)
@@ -244,12 +245,12 @@ void* Slave::SPEHandler(void* p)
 
 
    // initialize processing function
-   self->acceptLibrary(key, ip, dataport, transid);
+   self->acceptLibrary(key, ip, dataport, transid, lib);
    SPHERE_PROCESS process = NULL;
    MR_MAP map = NULL;
    MR_PARTITION partition = NULL;
    void* lh = NULL;
-   self->openLibrary(key, function, lh);
+   self->openLibrary(key, lib, lh);
    if (NULL == lh)
    {
       self->logError(3, ip, ctrlport, function);
@@ -262,7 +263,6 @@ void* Slave::SPEHandler(void* p)
       self->getMapFunc(lh, function, map, partition);
    else
       return NULL;
-
 
    timeval t1, t2, t3, t4;
    gettimeofday(&t1, 0);
@@ -286,7 +286,10 @@ void* Slave::SPEHandler(void* p)
       int64_t totalrows = *(int64_t*)(dataseg + 8);
       int32_t dsid = *(int32_t*)(dataseg + 16);
       string datafile = dataseg + 20;
-      sprintf(dest.m_pcLocalFileID, ".%d", dsid);
+      if (buckets != -1)
+        sprintf(dest.m_pcLocalFileID, ".%d", dsid);
+      else
+        *dest.m_pcLocalFileID = 0; // FIXME HACK JP
       delete [] dataseg;
       // cout << "new job " << datafile << " " << offset << " " << totalrows << endl;
 
@@ -348,6 +351,7 @@ void* Slave::SPEHandler(void* p)
       int deliverystatus = 0;
       int processstatus = 0;
 
+      unitrows = totalrows; // just give me the whole damn thing
       // process data segments
       for (int i = 0; i < totalrows; i += unitrows)
       {
@@ -373,7 +377,7 @@ void* Slave::SPEHandler(void* p)
          unsigned int seed = t.tv_sec * 1000000 + t.tv_usec;
          int ds_thresh = 32000000 * ((rand_r(&seed) % 7) + 1);
          if ((result.m_llTotalDataSize >= ds_thresh) && (buckets != 0))
-            deliverystatus = self->deliverResult(buckets, speid, result, dest);
+           deliverystatus = self->deliverResult(buckets, speid, result, dest, file);
 
          if (deliverystatus < 0)
          {
@@ -423,7 +427,7 @@ void* Slave::SPEHandler(void* p)
             unsigned int seed = t.tv_sec * 1000000 + t.tv_usec;
             int ds_thresh = 32000000 * ((rand_r(&seed) % 7) + 1);
             if ((result.m_llTotalDataSize >= ds_thresh) && (buckets != 0))
-               deliverystatus = self->deliverResult(buckets, speid, result, dest);
+              deliverystatus = self->deliverResult(buckets, speid, result, dest, file);
 
             if (deliverystatus < 0)
             {
@@ -444,7 +448,7 @@ void* Slave::SPEHandler(void* p)
 
       // if buckets = 0, send back to clients, otherwise deliver to local or network locations
       if ((buckets != 0) && (progress >= 0))
-         deliverystatus = self->deliverResult(buckets, speid, result, dest);
+        deliverystatus = self->deliverResult(buckets, speid, result, dest, file);
 
       if (deliverystatus < 0)
          progress = -1;
@@ -457,6 +461,13 @@ void* Slave::SPEHandler(void* p)
 
       if (100 == progress)
       {
+         // report new files
+         vector<string> filelist;
+         for (set<string>::iterator i = file.m_sstrFiles.begin(); i != file.m_sstrFiles.end(); ++ i)
+            filelist.push_back(*i);
+         self->report(master_ip, master_port, transid, filelist, true);
+         self->reportMO(master_ip, master_port, transid);
+
          msg.m_iDataLength = SectorMsg::m_iHdrSize + 8;
          int id = 0;
          self->m_GMP.sendto(ip.c_str(), ctrlport, id, &msg);
@@ -464,13 +475,6 @@ void* Slave::SPEHandler(void* p)
          // cout << "sending data back... " << buckets << endl;
          self->sendResultToClient(buckets, dest.m_piSArray, dest.m_piRArray, result, ip, dataport, transid);
          dest.reset(buckets);
-
-         // report new files
-         vector<string> filelist;
-         for (set<string>::iterator i = file.m_sstrFiles.begin(); i != file.m_sstrFiles.end(); ++ i)
-            filelist.push_back(*i);
-         self->report(master_ip, master_port, transid, filelist, true);
-         self->reportMO(master_ip, master_port, transid);
       }
       else
       {
@@ -808,8 +812,7 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
       idx.read((char*)index, (totalrows + 1) * 8);
       idx.close();
    }
-   else
-   {
+   else if (size) {
       SectorMsg msg;
       msg.setType(110); // open the index file
       msg.setKey(0);
@@ -866,9 +869,15 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
 
       // update total received data
       m_SlaveStat.updateIO(srcip, (totalrows + 1) * 8, 0);
+   } else {
+     // no index, so rows are bytes
+     size = totalrows;
+     index[0] = 0;
+     goto Lreaddata;
    }
 
    size = index[totalrows] - index[0];
+Lreaddata:
    block = new char[size];
 
    // read data file
@@ -945,7 +954,7 @@ int Slave::SPEReadData(const string& datafile, const int64_t& offset, int& size,
    return totalrows;
 }
 
-int Slave::sendResultToFile(const SPEResult& result, const string& localfile, const int64_t& offset)
+int Slave::sendResultToFile(const SPEResult& result, const string& localfile, const int64_t& offset, SFile &file)
 {
    fstream datafile, idxfile;
    datafile.open((m_strHomeDir + localfile).c_str(), ios::out | ios::binary | ios::app);
@@ -961,6 +970,10 @@ int Slave::sendResultToFile(const SPEResult& result, const string& localfile, co
          result.m_vIndex[0][i] += offset;
    }
    idxfile.write((char*)(result.m_vIndex[0] + 1), (result.m_vIndexLen[0] - 1) * 8);
+   string f = localfile;
+   if (f[0] == '.' && f[1] == '/') // FIXME, WTF: need to cannonicalize filenames!
+     f = f.erase(0,2);
+   file.m_sstrFiles.insert(f);
 
    datafile.close();
    idxfile.close();
@@ -1077,7 +1090,7 @@ int Slave::sendResultToBuckets(const int& speid, const int& buckets, const SPERe
    return 1;
 }
 
-int Slave::acceptLibrary(const int& key, const string& ip, int port, int session)
+int Slave::acceptLibrary(const int& key, const string& ip, int port, int session, string &libname)
 {
    int32_t num = -1;
    m_DataChn.recv4(ip, port, session, num);
@@ -1087,6 +1100,8 @@ int Slave::acceptLibrary(const int& key, const string& ip, int port, int session
       char* lib = NULL;
       int size = 0;
       m_DataChn.recv(ip, port, session, lib, size);
+      libname = lib;
+      
       char* buf = NULL;
       m_DataChn.recv(ip, port, session, buf, size);
 
@@ -1118,7 +1133,7 @@ int Slave::openLibrary(const int& key, const string& lib, void*& lh)
 {
    char path[64];
    sprintf(path, "%d", key);
-   lh = dlopen((m_strHomeDir + ".sphere/" + path + "/" + lib + ".so").c_str(), RTLD_LAZY | RTLD_DEEPBIND);
+   lh = dlopen((m_strHomeDir + ".sphere/" + path + "/" + lib).c_str(), RTLD_LAZY | RTLD_DEEPBIND);
    if (NULL == lh)
    {
       // if no user uploaded lib, check permanent lib
@@ -1375,14 +1390,14 @@ int Slave::processData(SInput& input, SOutput& output, SFile& file, SPEResult& r
    return 0;
 }
 
-int Slave::deliverResult(const int& buckets, const int& speid, SPEResult& result, SPEDestination& dest)
+int Slave::deliverResult(const int& buckets, const int& speid, SPEResult& result, SPEDestination& dest, SFile &file)
 {
    int ret = 0;
 
    if (buckets == -1)
-      ret = sendResultToFile(result, dest.m_strLocalFile + dest.m_pcLocalFileID, dest.m_piSArray[0]);
+     ret = sendResultToFile(result, dest.m_strLocalFile + dest.m_pcLocalFileID, dest.m_piSArray[0], file);
    else if (buckets > 0)
-      ret = sendResultToBuckets(speid, buckets, result, dest);
+     ret = sendResultToBuckets(speid, buckets, result, dest);
 
    for (int b = 0; b < buckets; ++ b)
    {

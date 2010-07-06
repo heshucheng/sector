@@ -65,6 +65,7 @@ public:
    virtual int remove(const std::string& path, bool recursive = false);
    virtual int update(const std::string& fileinfo, const Address& addr, const int& type);
    virtual int utime(const std::string& path, const int64_t& ts);
+   virtual int settype(const std::string& path, const std::string& newtype);
 
 public:
    virtual int serialize(const std::string& path, const std::string& dstfile);

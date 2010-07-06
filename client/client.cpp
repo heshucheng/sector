@@ -395,7 +395,7 @@ int Client::list(const string& path, vector<SNode>& attr)
    unsigned int s = 0;
    while (s < filelist.length())
    {
-      int t = filelist.find(';', s);
+      int t = filelist.find('\02', s);
       SNode sn;
       sn.deserialize(filelist.substr(s, t - s).c_str());
       attr.insert(attr.end(), sn);
@@ -583,6 +583,29 @@ int Client::utime(const string& path, const int64_t& ts)
    Address serv;
    if (lookup(revised_path, serv) < 0)
       return SectorError::E_CONNECTION;
+
+   if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
+      return SectorError::E_CONNECTION;
+
+   if (msg.getType() < 0)
+      return *(int32_t*)(msg.getData());
+
+   return 0;
+}
+
+int Client::settype(const string& path, const string& newtype)
+{
+   string revised_path = Metadata::revisePath(path);
+
+   SectorMsg msg;
+   msg.setType(108);
+   msg.setKey(m_iKey);
+   msg.setData(0, revised_path.c_str(), revised_path.length() + 1);
+   msg.setData(revised_path.length() + 1, newtype.c_str(), newtype.length() + 1);
+
+   Address serv;
+   m_Routing.lookup(revised_path, serv);
+   login(serv.m_strIP, serv.m_iPort);
 
    if (m_GMP.rpc(serv.m_strIP.c_str(), serv.m_iPort, &msg, &msg) < 0)
       return SectorError::E_CONNECTION;

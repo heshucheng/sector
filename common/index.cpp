@@ -50,6 +50,7 @@ written by
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstring>
+#include <sys/xattr.h>
 
 using namespace std;
 
@@ -164,11 +165,13 @@ int Index::lookup(const string& path, SNode& attr)
       currdir = &(s->second.m_mDirectory);
    }
 
+   // why not just assign it???
    attr.m_strName = s->second.m_strName;
    attr.m_bIsDir = s->second.m_bIsDir;
    attr.m_llSize = s->second.m_llSize;
    attr.m_llTimeStamp = s->second.m_llTimeStamp;
    attr.m_sLocation = s->second.m_sLocation;
+   attr.m_type = s->second.m_type;
 
    return s->second.m_mDirectory.size();
 }
@@ -470,6 +473,31 @@ int Index::utime(const string& path, const int64_t& ts)
    }
 
    s->second.m_llTimeStamp = ts;
+   return 1;
+}
+
+int Index::settype(const string& path, const string& newtype)
+{
+   CGuard mg(m_MetaLock);
+
+   vector<string> dir;
+   parsePath(path, dir);
+
+   if (dir.empty())
+      return 0;
+
+   map<string, SNode>* currdir = &m_mDirectory;
+   map<string, SNode>::iterator s;
+   for (vector<string>::iterator d = dir.begin(); d != dir.end(); ++ d)
+   {
+      s = currdir->find(*d);
+      if (s == currdir->end())
+         return -1;
+
+      currdir = &(s->second.m_mDirectory);
+   }
+
+   s->second.m_type = newtype;
    return 1;
 }
 
@@ -833,6 +861,10 @@ int Index::scan(const string& currdir, map<string, SNode>& metadata)
 
       mi->second.m_llSize = s.st_size;
       mi->second.m_llTimeStamp = s.st_mtime;
+
+      char typebuf[4096] = ""; 
+      getxattr((currdir + namelist[i]->d_name).c_str(), "user.vz.type", typebuf, 4096);
+      mi->second.m_type = typebuf;
 
       if (S_ISDIR(s.st_mode))
       {
